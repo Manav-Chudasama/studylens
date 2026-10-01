@@ -1,7 +1,8 @@
-import { FileText, PlayCircle } from "lucide-react";
+import { FileText, PanelRightClose, PlayCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Citation, Material, SourceLocation, SourcePreview } from "@/lib/study-types";
 
@@ -10,6 +11,7 @@ type SourceViewerProps = {
   citation?: Citation;
   preview?: SourcePreview;
   showHeading?: boolean;
+  onCollapse?: () => void;
 };
 
 /** Shows the selected source and its cited passage on desktop or in a drawer. */
@@ -18,19 +20,35 @@ export function SourceViewer({
   citation,
   preview,
   showHeading = true,
+  onCollapse,
 }: SourceViewerProps) {
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showHeading && (
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-5">
-          <div className="min-w-0">
-            <h2 className="font-heading text-lg font-semibold">Source viewer</h2>
-            <p className="truncate text-xs text-muted-foreground">{material?.title ?? "Select a material"}</p>
+        <div className="shrink-0 border-b border-border px-5 py-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-heading whitespace-nowrap text-lg font-semibold">Source viewer</h2>
+              <p className="truncate text-xs text-muted-foreground">{material?.title ?? "Select a material"}</p>
+            </div>
+            {onCollapse && (
+              <Button
+                aria-controls="source-sidebar"
+                aria-expanded={true}
+                aria-label="Collapse source viewer"
+                onClick={onCollapse}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <PanelRightClose />
+              </Button>
+            )}
           </div>
-          {citation && <Badge variant="outline">{formatLocation(citation.location)}</Badge>}
+          {citation && <Badge className="mt-3 max-w-full" variant="outline">{formatLocation(citation.location)}</Badge>}
         </div>
       )}
-      <ScrollArea className="min-h-0 flex-1 bg-muted/40 p-4 sm:p-5">
+      <ScrollArea className="min-h-0 flex-1 bg-muted/40 p-4 [&_[data-slot=scroll-area-viewport]]:overscroll-contain sm:p-5">
         {!material && (
           <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
             Select a material or citation to inspect its source.

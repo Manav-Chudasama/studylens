@@ -14,15 +14,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { StudyUser } from "@/lib/study-types";
 
 type AccountDialogProps = {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onConnectTelegram?: () => Promise<string>;
+  viewer?: StudyUser | null;
 };
 
 /** Account and Telegram connection surface for the later auth and bot phases. */
-export function AccountDialog({ isOpen, onOpenChange, onConnectTelegram }: AccountDialogProps) {
+export function AccountDialog({ isOpen, onOpenChange, onConnectTelegram, viewer }: AccountDialogProps) {
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -49,12 +51,16 @@ export function AccountDialog({ isOpen, onOpenChange, onConnectTelegram }: Accou
         </DialogHeader>
         <div className="space-y-4">
           <div className="rounded-lg border border-border p-4">
-            <p className="font-medium">Student account</p>
-            <p className="mt-1 text-sm text-muted-foreground">Email sign-in will protect your materials and conversations.</p>
-            <div className="mt-3 flex gap-2">
-              <Button nativeButton={false} render={<Link href="/auth/sign-in" />} size="sm" variant="outline">Sign in</Button>
-              <Button nativeButton={false} render={<Link href="/auth/sign-up" />} size="sm" variant="outline">Create account</Button>
-            </div>
+            <p className="font-medium">{viewer?.displayName ?? "Student account"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {viewer ? "Your study materials and conversations belong to this account." : "Email sign-in will protect your materials and conversations."}
+            </p>
+            {!viewer && (
+              <div className="mt-3 flex gap-2">
+                <Button nativeButton={false} render={<Link href="/auth/sign-in" />} size="sm" variant="outline">Sign in</Button>
+                <Button nativeButton={false} render={<Link href="/auth/sign-up" />} size="sm" variant="outline">Create account</Button>
+              </div>
+            )}
           </div>
           <div className="rounded-lg border border-border p-4">
             <div className="flex items-center justify-between gap-2">

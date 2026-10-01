@@ -31,6 +31,26 @@ export type StudyMessage = {
   activity?: string;
 };
 
+export type StudyUser = {
+  id: string;
+  displayName: string;
+};
+
+export type StudyConversation = {
+  id: string;
+  title: string;
+  updatedLabel: string;
+  messages: StudyMessage[];
+};
+
+export type StudyNotebook = {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type QuizQuestion = {
   id: string;
   prompt: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Library, PlayCircle, Plus, Search } from "lucide-react";
+import { FileText, Library, PanelLeftClose, PlayCircle, Plus, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ type MaterialLibraryProps = {
   selectedId?: string;
   onSelect: (id: string) => void;
   onUploadClick: () => void;
+  onCollapse?: () => void;
 };
 
 /** Browse the current student's materials and open the upload flow. */
@@ -27,6 +28,7 @@ export function MaterialLibrary({
   selectedId,
   onSelect,
   onUploadClick,
+  onCollapse,
 }: MaterialLibraryProps) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -37,10 +39,24 @@ export function MaterialLibrary({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-4 sm:p-5">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
       <div className="mb-5 flex items-center justify-between">
         <h2 className="font-heading text-lg font-semibold">Library</h2>
-        <Library aria-hidden="true" className="size-4 text-muted-foreground" />
+        {onCollapse ? (
+          <Button
+            aria-controls="library-sidebar"
+            aria-expanded={true}
+            aria-label="Collapse library"
+            onClick={onCollapse}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <PanelLeftClose />
+          </Button>
+        ) : (
+          <Library aria-hidden="true" className="size-4 text-muted-foreground" />
+        )}
       </div>
       <Button className="h-10 w-full" onClick={onUploadClick}>
         <Plus /> Upload material
@@ -67,7 +83,7 @@ export function MaterialLibrary({
           <TabsTrigger value="video">Videos</TabsTrigger>
         </TabsList>
       </Tabs>
-      <ScrollArea className="mt-4 min-h-0 flex-1">
+      <ScrollArea className="mt-4 min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
         {visibleMaterials.length > 0 ? (
           <div className="space-y-2 pr-1">
             {visibleMaterials.map((material) => (

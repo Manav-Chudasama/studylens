@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { BookOpenText } from "lucide-react";
+import { ArrowRight, BookOpenText, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
+import authStudyIllustration from "@/public/auth-study-illustration.webp";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -26,11 +29,12 @@ type AuthFormProps = {
   onSubmit?: (submission: AuthSubmission) => Promise<void>;
 };
 
-/** Reusable account form for the planned Supabase email/password flow. */
+/** Reusable account screen for the planned Supabase email/password flow. */
 export function AuthForm({ mode, onSubmit }: AuthFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [notice, setNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isReset = mode === "reset-password";
@@ -57,59 +61,136 @@ export function AuthForm({ mode, onSubmit }: AuthFormProps) {
     }
   }
 
-  const title = mode === "sign-in" ? "Welcome back" : mode === "sign-up" ? "Create an account" : "Reset your password";
-  const description = isReset
-    ? "We’ll email you a password reset link."
-    : "Keep your study materials and conversations in one private library.";
+  const title = mode === "sign-in" ? "Welcome back" : mode === "sign-up" ? "Create your account" : "Reset your password";
+  const description = mode === "sign-in"
+    ? "Pick up where you left off with your study materials."
+    : mode === "sign-up"
+      ? "Keep your notes, documents, and source-linked answers together."
+      : "Enter your email and we’ll send a reset link when account services are connected.";
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
-      <div className="w-full max-w-md space-y-6">
-        <Link className="flex items-center justify-center gap-2 text-lg font-semibold" href="/">
+    <main className="min-h-svh w-full bg-background lg:grid lg:grid-cols-2">
+      <StudyPreview />
+
+      <section className="flex min-h-svh flex-col justify-between px-6 py-8 sm:px-10 sm:py-10 lg:px-14 lg:py-10 xl:px-20">
+        <Link className="inline-flex w-fit items-center gap-2 font-heading text-lg font-semibold lg:hidden" href="/">
           <BookOpenText className="size-5" /> StudyLens
         </Link>
-        <Card className="gap-5 py-6">
-          <CardHeader className="space-y-2 px-6">
-            <CardTitle className="text-xl">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </CardHeader>
-          <form onSubmit={submit}>
-            <CardContent className="space-y-4 px-6">
-              <div className="space-y-2">
-                <Label htmlFor="auth-email">Email</Label>
-                <Input autoComplete="email" id="auth-email" onChange={(event) => setEmail(event.target.value)} type="email" value={email} />
+
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-4">
+            <div className="space-y-3">
+              <Badge className="font-medium" variant="outline">Your study space</Badge>
+              <h1 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1>
+              <p className="max-w-sm text-sm leading-6 text-muted-foreground">{description}</p>
+            </div>
+
+            <form className="mt-6 space-y-3.5" noValidate onSubmit={submit}>
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-email">Email address</Label>
+                <Input
+                  autoComplete="email"
+                  className="h-10 sm:h-11"
+                  id="auth-email"
+                  name="email"
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                  value={email}
+                />
               </div>
+
               {!isReset && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="auth-password">Password</Label>
-                    {mode === "sign-in" && <Link className="text-xs underline underline-offset-4" href="/auth/reset-password">Forgot password?</Link>}
+                    {mode === "sign-in" && (
+                      <Link className="text-xs font-medium text-muted-foreground hover:text-foreground" href="/auth/reset-password">
+                        Forgot password?
+                      </Link>
+                    )}
                   </div>
-                  <Input autoComplete={mode === "sign-up" ? "new-password" : "current-password"} id="auth-password" onChange={(event) => setPassword(event.target.value)} type="password" value={password} />
+                  <div className="relative">
+                    <Input
+                      autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
+                      className="h-10 pr-11 sm:h-11"
+                      id="auth-password"
+                      name="password"
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Enter your password"
+                      type={isPasswordVisible ? "text" : "password"}
+                      value={password}
+                    />
+                    <Button
+                      aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+                      className="absolute top-1/2 right-1 -translate-y-1/2"
+                      onClick={() => setIsPasswordVisible((current) => !current)}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {isPasswordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </Button>
+                  </div>
+                  {mode === "sign-up" && <p className="text-xs text-muted-foreground">Use at least 8 characters.</p>}
                 </div>
               )}
+
               {mode === "sign-up" && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="auth-confirm">Confirm password</Label>
-                  <Input autoComplete="new-password" id="auth-confirm" onChange={(event) => setConfirmation(event.target.value)} type="password" value={confirmation} />
+                  <Input
+                    autoComplete="new-password"
+                    className="h-10 sm:h-11"
+                    id="auth-confirm"
+                    name="confirm-password"
+                    onChange={(event) => setConfirmation(event.target.value)}
+                    placeholder="Enter your password again"
+                    type={isPasswordVisible ? "text" : "password"}
+                    value={confirmation}
+                  />
                 </div>
               )}
+
               {notice && <Alert><AlertDescription>{notice}</AlertDescription></Alert>}
-            </CardContent>
-            <CardFooter className="mt-5 flex-col gap-3 border-0 bg-transparent px-6 py-0">
-              <Button className="w-full" disabled={isSubmitting} type="submit">
+
+              <Button className="h-10 w-full sm:h-11" disabled={isSubmitting} type="submit">
                 {isSubmitting ? "Please wait..." : isReset ? "Send reset link" : mode === "sign-up" ? "Create account" : "Sign in"}
+                {!isSubmitting && <ArrowRight className="ml-1 size-4" />}
               </Button>
-              <p className="text-sm text-muted-foreground">
-                {mode === "sign-up" ? "Already have an account? " : "New to StudyLens? "}
-                <Link className="font-medium text-foreground underline underline-offset-4" href={mode === "sign-up" ? "/auth/sign-in" : "/auth/sign-up"}>
-                  {mode === "sign-up" ? "Sign in" : "Create account"}
-                </Link>
-              </p>
-            </CardFooter>
-          </form>
-        </Card>
-      </div>
+            </form>
+
+            <div className="mt-5 border-t border-border pt-4 text-center text-sm text-muted-foreground">
+              {mode === "sign-up" ? "Already have an account? " : isReset ? "Remember your password? " : "New to StudyLens? "}
+              <Link className="font-semibold text-foreground underline underline-offset-4" href={mode === "sign-up" || isReset ? "/auth/sign-in" : "/auth/sign-up"}>
+                {mode === "sign-up" || isReset ? "Sign in" : "Create an account"}
+              </Link>
+            </div>
+          </div>
+
+          <Link className="inline-flex w-fit items-center gap-2 text-xs text-muted-foreground hover:text-foreground" href="/">
+            <BookOpenText className="size-3.5" /> Back to StudyLens
+          </Link>
+        </section>
     </main>
+  );
+}
+
+function StudyPreview() {
+  return (
+    <section aria-label="StudyLens illustration" className="relative hidden min-h-0 min-w-0 overflow-hidden border-r border-border bg-muted lg:block">
+      <Image
+        alt="Open study notes connected to their source pages"
+        className="object-cover object-center"
+        fill
+        priority
+        sizes="(min-width: 1024px) 50vw, 100vw"
+        src={authStudyIllustration}
+      />
+
+      <Link className="absolute top-8 left-8 z-10 inline-flex w-fit items-center gap-3 font-heading text-lg font-semibold lg:top-10 lg:left-10" href="/">
+        <span className="flex size-9 items-center justify-center rounded-xl border border-border/80 bg-background/80 shadow-sm backdrop-blur-sm"><BookOpenText className="size-5" /></span>
+        StudyLens
+      </Link>
+    </section>
   );
 }

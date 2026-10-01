@@ -46,7 +46,7 @@ export function ChatComposer({ isBusy = false, onSend }: ChatComposerProps) {
   }
 
   return (
-    <div className="border-t border-border bg-background p-4 sm:px-8 sm:py-5">
+    <div className="shrink-0 border-t border-border bg-background p-4 sm:px-8 sm:py-5">
       <div className="mx-auto max-w-3xl">
         <Suggestions className="mb-3" onSelect={setDraft}>
           <SuggestionList className="justify-start">

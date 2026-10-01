@@ -40,8 +40,8 @@ export function ChatThread({
   onRetry,
 }: ChatThreadProps) {
   return (
-    <Thread className="min-h-0 flex-1">
-      <ThreadContent className="mx-auto w-full max-w-3xl gap-7 px-5 py-8 sm:px-8 sm:py-10">
+    <Thread className="min-h-0 flex-1 overflow-hidden">
+      <ThreadContent className="mx-auto w-full max-w-3xl gap-7 px-5 py-8 sm:px-8 sm:py-10" scrollClassName="overscroll-contain">
         {messages.length === 0 && <ChatEmptyState />}
         {messages.map((message) => (
           <ChatTurn key={message.id} message={message} onOpenCitation={onOpenCitation} />
