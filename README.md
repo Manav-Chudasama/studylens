@@ -1,36 +1,21 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StudyLens
 
-## Getting Started
+StudyLens is a student study assistant UI for asking questions about uploaded material. The current milestone provides the responsive interface and typed connections for later auth, upload, retrieval, chat, quiz, and Telegram services.
 
-First, run the development server:
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+bun install
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. Use `bun run lint`, `bun x tsc --noEmit`, and `bun test` to verify the UI. A production build is not part of the normal verification workflow for this repository.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Current UI
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `/` — study workspace with sample materials, Nexus chat components, source navigation, upload dialog, practice question, and account/Telegram dialog.
+- `/auth/sign-in`, `/auth/sign-up`, `/auth/reset-password`, `/auth/verify` — account screens ready for the Supabase auth phase.
 
-## Learn More
+Sample materials and answers are **preview content**. Upload, message sending, auth submission, and Telegram linking are not connected to a backend yet. The workspace accepts typed data and optional callbacks so these services can be added without replacing the UI.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See `DESIGN.md` for interface decisions and `IMPLEMENTATION.md` for phase status.
