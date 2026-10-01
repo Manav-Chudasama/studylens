@@ -27,7 +27,7 @@ export function NotebookWorkspace({ notebookId }: { notebookId: string }) {
               <h1 className="font-heading text-xl font-semibold">Notebook not found</h1>
               <p className="mt-2 text-sm text-muted-foreground">This notebook is not in your study space.</p>
             </div>
-            <Button nativeButton={false} render={<Link href="/dashboard" />}>Back to notebooks</Button>
+            <Button nativeButton={false} render={<Link href="/" />}>Back to notebooks</Button>
           </CardContent>
         </Card>
       </main>

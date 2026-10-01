@@ -53,7 +53,7 @@ export function NotebookDashboard() {
     <div className="min-h-svh bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-4 px-5 sm:px-8">
-          <Link className="inline-flex shrink-0 items-center gap-2 font-heading text-xl font-semibold tracking-tight" href="/dashboard">
+          <Link className="inline-flex shrink-0 items-center gap-2 font-heading text-xl font-semibold tracking-tight" href="/">
             <BookOpenText aria-hidden="true" className="size-6" /> StudyLens
           </Link>
           <span className="hidden border-l border-border pl-4 text-sm font-medium text-muted-foreground sm:inline">My notebooks</span>

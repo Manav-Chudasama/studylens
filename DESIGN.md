@@ -5,11 +5,11 @@
 - Signed-in study starts on a notebook dashboard. Cards lead to notebook-specific workspaces; the dashboard offers search and notebook creation. Keep the dashboard's section and card layout inspired by the supplied reference while using the project's semantic monochrome theme.
 - A notebook owns its materials, source previews, conversations, and practice content. Workspace breadcrumbs return to the notebook dashboard. A new notebook opens with empty library, chat, and source states.
 - The primary workspace follows the approved preview: library on the left, chat in the center, and source viewer on the right.
-- At medium widths, the library remains visible and the source viewer opens as a drawer. At phone widths, both side panels open as drawers.
-- The chat composer stays at the bottom of the center column. Citations open the corresponding source in the desktop panel or mobile drawer.
+- On desktop, sidebars are draggable and adjustable using Shadcn resizable panels (`ResizablePanelGroup`, `ResizablePanel`, and `ResizableHandle withHandle`). The student can freely adjust library and source viewer widths to prevent congestion. Sidebars remain collapsible to 0% width, returning full space to the chat. When either sidebar is collapsed, prominent actionable pop-back buttons float below the header in the top-left (to reopen Library) and top-right (to reopen Source viewer).
+- Workspace header inspired by Gemini NotebookLM: the global top header hosts the notebook title, breadcrumb navigation, and study controls (History, Practice, Source viewer toggle, Account / Sign in). Redundant banners inside the chat column are eliminated so the conversation thread starts immediately at the top with maximum vertical height.
+- At tablet and phone widths, both side panels open as accessible drawers (`Sheet`), giving the full screen to the chat thread and composer.
+- The chat composer stays pinned at the bottom of the center column. Citations open the corresponding source in the desktop panel or mobile drawer.
 - The workspace fits the viewport. Material rows below the library tabs, chat messages, and source content each scroll inside their own panel; their headers, controls, and composer stay in place. Prevent scroll chaining between panels.
-- Desktop sidebars collapse completely so the chat gains space. Each panel has a collapse control, and an always reachable button reopens it. Keep the smaller-screen drawer behavior.
-- Animate desktop sidebar track widths and panel opacity for collapse/reopen, while respecting reduced-motion preferences. Keep the panels mounted so library filters remain in place.
 - Keep the workspace header free of preview labels. Show a Sign in action to guests and an account avatar only when a viewer is supplied. Place the chat history icon beside Practice; its dialog lists only the current viewer's conversations, with sign-in and empty states when appropriate.
 
 ## Visual system

@@ -9,6 +9,10 @@
    - Replaced the auth preview content with an optimized grayscale study illustration shared by sign-in, sign-up, and password reset.
    - Removed the workspace preview badge. Guests see Sign in instead of a profile avatar; the chat header opens a saved-conversation dialog with guest and empty states, and selecting a supplied conversation swaps the visible messages.
    - Added a notebook dashboard at `/dashboard` with search, recent cards, and a validated create dialog. Notebook cards open `/notebooks/[id]`; each workspace receives only that notebook's sample materials and chats. New notebook names persist locally for the UI phase and open an empty workspace. The populated Algorithms & DSA notebook previews signed-in chat history.
+   - Set the root route `/` to display the Notebook Dashboard, linking directly into individual study workspaces.
+   - Upgraded desktop workspace to draggable, adjustable sidebars via Shadcn Resizable panels (`ResizablePanelGroup`, `ResizablePanel`, `ResizableHandle withHandle`).
+   - Streamlined workspace layout inspired by Google Gemini NotebookLM: moved notebook breadcrumbs and contextual controls (`History`, `Practice`, `Source viewer`, `Sign in`) into the top header, eliminating the inner chat banner to grant the conversation thread 100% vertical viewport height.
+   - Resolved `react-resizable-panels` v4 unknown property console warnings (`onExpand`, `onCollapse`) by tracking panel state dynamically via `onResize` and panel refs. Added prominent pop-back action buttons below the header in the top-left (Library) and top-right (Source viewer) whenever sidebars are collapsed.
 3. **Accounts and storage — planned:** Supabase email/password authentication, private materials, and ownership rules.
 4. **Ingestion and retrieval — planned:** PDF, OCR, text, Markdown, embeddings, and vector search.
 5. **Grounded chat and citations — planned:** evidence checks, Gemini answers, OpenAI fallback, and source-linked responses.

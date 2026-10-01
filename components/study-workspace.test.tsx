@@ -21,4 +21,17 @@ describe("workspace account header", () => {
     expect(markup).toContain("Account for Maya Chen");
     expect(markup).not.toContain('href="/auth/sign-in"');
   });
+
+  test("renders the workspace resizable panel layout with notebook title", () => {
+    const markup = renderToStaticMarkup(
+      <StudyWorkspace notebookTitle="Machine Learning Basics" />,
+    );
+
+    expect(markup).toContain("Machine Learning Basics");
+    expect(markup).toContain('id="library-panel"');
+    expect(markup).toContain('id="chat-panel"');
+    expect(markup).toContain('id="source-panel"');
+    expect(markup).not.toContain("onCollapse=");
+    expect(markup).not.toContain("onExpand=");
+  });
 });

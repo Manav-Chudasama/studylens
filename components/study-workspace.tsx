@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { BookOpenText, History, LogIn, Menu, PanelLeftOpen, PanelRightOpen, Sparkles } from "lucide-react";
+import { usePanelRef } from "react-resizable-panels";
+
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
 import { AccountDialog } from "@/components/study/account-dialog";
 import { ChatComposer, type ChatSubmission } from "@/components/study/chat-composer";
@@ -86,11 +93,15 @@ export function StudyWorkspace({
   const visibleMessages = selectedConversation?.messages ?? messages;
   const selectedMaterial = materials.find((material) => material.id === selectedId);
 
+  const [chatMessages, setChatMessages] = useState<StudyMessage[]>(visibleMessages);
+  const [activeChatState, setActiveChatState] = useState<ChatState>(chatState);
+
   function selectConversation(id: string) {
     if (!viewer) return;
     const conversation = conversations.find((item) => item.id === id);
     if (!conversation) return;
     setSelectedConversationId(id);
+    setChatMessages(conversation.messages);
     setSelectedId(conversation.messages.flatMap((message) => message.citations)[0]?.materialId);
     setSelectedCitation(undefined);
     setIsSourceOpen(false);
@@ -99,24 +110,120 @@ export function StudyWorkspace({
     onSelectConversation?.(id);
   }
 
+  async function handleSend(submission: ChatSubmission) {
+    if (onSend) {
+      await onSend(submission);
+      return;
+    }
+
+    const userMessage: StudyMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: submission.text,
+      citations: [],
+    };
+
+    setChatMessages((prev) => [...prev, userMessage]);
+    setActiveChatState("searching");
+
+    setTimeout(() => {
+      setActiveChatState("streaming");
+
+      setTimeout(() => {
+        const targetMaterial = selectedMaterial ?? materials[0];
+        const preview = targetMaterial ? previews[targetMaterial.id] : undefined;
+        const excerpt = preview?.excerpt || "Evaluation uses held-out examples to estimate how well the model generalizes.";
+
+        let answerContent = "";
+        const query = submission.text.toLowerCase();
+        if (query.includes("summar")) {
+          answerContent = `Here is a summary based on **${targetMaterial?.title ?? "your study library"}**:\n\n` +
+            `• **Core Idea:** ${preview?.intro ?? "Explores essential principles and definitions."}\n` +
+            `• **Key Finding:** ${excerpt}\n` +
+            `• **Practical Application:** ${preview?.following ?? "Regular review and practice helps solidify these principles."}`;
+        } else if (query.includes("quiz") || query.includes("test") || query.includes("practice")) {
+          answerContent = `I have pulled up a practice question from **${targetMaterial?.title ?? "your materials"}**. Test your recall using the Practice button above!`;
+          setShowQuiz(true);
+        } else {
+          answerContent = `According to **${targetMaterial?.title ?? "your study notes"}**:\n\n> "${excerpt}"\n\n` +
+            `This directly addresses your question. You can click on the citation below to inspect the verified passage in the Source Viewer.`;
+        }
+
+        const dummyAssistantMessage: StudyMessage = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: answerContent,
+          citations: targetMaterial ? [
+            {
+              id: `citation-${Date.now()}`,
+              materialId: targetMaterial.id,
+              title: targetMaterial.title,
+              excerpt: excerpt,
+              location: targetMaterial.type === "pdf"
+                ? { kind: "page", page: 4 }
+                : targetMaterial.type === "video"
+                ? { kind: "timestamp", seconds: 872 }
+                : { kind: "section", section: "1.2" },
+            }
+          ] : [],
+          activity: `Searched ${materials.length} material${materials.length === 1 ? "" : "s"}`,
+        };
+
+        setChatMessages((prev) => [...prev, dummyAssistantMessage]);
+        setActiveChatState("idle");
+      }, 900);
+    }, 600);
+  }
+
+  const libraryPanelRef = usePanelRef();
+  const sourcePanelRef = usePanelRef();
+
+  function expandLibrary() {
+    if (libraryPanelRef.current?.isCollapsed()) {
+      libraryPanelRef.current.expand();
+    } else {
+      libraryPanelRef.current?.resize("22%");
+    }
+    setIsLibraryExpanded(true);
+  }
+
+  function expandSource() {
+    if (sourcePanelRef.current?.isCollapsed()) {
+      sourcePanelRef.current.expand();
+    } else {
+      sourcePanelRef.current?.resize("26%");
+    }
+    setIsSourceExpanded(true);
+  }
+
+  function collapseLibrary() {
+    libraryPanelRef.current?.collapse();
+    setIsLibraryExpanded(false);
+  }
+
+  function collapseSource() {
+    sourcePanelRef.current?.collapse();
+    setIsSourceExpanded(false);
+  }
+
   function openMaterial(id: string) {
     setSelectedId(id);
     setSelectedCitation(undefined);
     setIsLibraryOpen(false);
-    if (window.matchMedia("(max-width: 1279px)").matches) {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setIsSourceOpen(true);
     } else {
-      setIsSourceExpanded(true);
+      expandSource();
     }
   }
 
   function openCitation(citation: Citation) {
     setSelectedId(citation.materialId);
     setSelectedCitation(citation);
-    if (window.matchMedia("(max-width: 1279px)").matches) {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
       setIsSourceOpen(true);
     } else {
-      setIsSourceExpanded(true);
+      expandSource();
     }
   }
 
@@ -134,105 +241,158 @@ export function StudyWorkspace({
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4 sm:px-6">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4 sm:px-6">
         <div className="flex items-center gap-3">
           <Button aria-controls="library-drawer" aria-expanded={isLibraryOpen} aria-label="Open library" className="lg:hidden" onClick={() => setIsLibraryOpen(true)} size="icon" variant="ghost">
             <Menu />
           </Button>
-          {!isLibraryExpanded && (
-            <Button aria-controls="library-sidebar" aria-expanded={false} aria-label="Expand library" className="hidden lg:inline-flex" onClick={() => setIsLibraryExpanded(true)} size="icon" type="button" variant="ghost">
-              <PanelLeftOpen />
-            </Button>
-          )}
           {notebookTitle ? (
-            <Link className="font-heading text-xl font-semibold tracking-tight" href="/dashboard">StudyLens</Link>
+            <Link className="font-heading text-xl font-semibold tracking-tight" href="/">StudyLens</Link>
           ) : (
             <span className="font-heading text-xl font-semibold tracking-tight">StudyLens</span>
           )}
+          <span className="hidden text-border/80 lg:inline">/</span>
+          <div className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
+            <BookOpenText className="size-4" />
+            {notebookTitle ? (
+              <span className="max-w-64 truncate font-medium text-foreground">{notebookTitle}</span>
+            ) : "My study library"}
+          </div>
         </div>
-        <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-          <BookOpenText className="size-4" />
-          {notebookTitle ? (
-            <><Link className="hover:text-foreground" href="/dashboard">Notebooks</Link><span aria-hidden="true">/</span><span className="max-w-48 truncate text-foreground">{notebookTitle}</span></>
-          ) : "My study library"}
+
+        <div className="flex items-center gap-2">
+          {viewer && (
+            <Button aria-label="Previous chats" onClick={() => setIsHistoryOpen(true)} size="sm" variant="ghost">
+              <History aria-hidden="true" className="size-4" />
+              <span className="hidden sm:inline">History</span>
+            </Button>
+          )}
+          {quiz && (
+            <Button aria-pressed={showQuiz} onClick={() => setShowQuiz((current) => !current)} size="sm" variant={showQuiz ? "secondary" : "ghost"}>
+              <Sparkles className="size-4" />
+              <span className="hidden sm:inline">Practice</span>
+            </Button>
+          )}
+          <Button aria-controls="source-drawer" aria-expanded={isSourceOpen} aria-label="View source" className="lg:hidden" onClick={() => setIsSourceOpen(true)} size="sm" variant="outline">
+            <BookOpenText className="size-4" />
+            <span className="hidden sm:inline">Source</span>
+          </Button>
+          <div className="mx-1 hidden h-4 w-px bg-border sm:block" />
+          {viewer ? (
+            <Button aria-label={`Account for ${viewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
+              <Avatar size="sm"><AvatarFallback>{viewer.displayName.trim().charAt(0).toUpperCase() || "S"}</AvatarFallback></Avatar>
+            </Button>
+          ) : (
+            <Button nativeButton={false} render={<Link href="/auth/sign-in" />} size="sm" variant="outline">
+              <LogIn aria-hidden="true" className="size-4" /> Sign in
+            </Button>
+          )}
         </div>
-        {viewer ? (
-          <Button aria-label={`Account for ${viewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
-            <Avatar size="sm"><AvatarFallback>{viewer.displayName.trim().charAt(0).toUpperCase() || "S"}</AvatarFallback></Avatar>
-          </Button>
-        ) : (
-          <Button nativeButton={false} render={<Link href="/auth/sign-in" />} size="sm" variant="outline">
-            <LogIn aria-hidden="true" className="size-4" /> Sign in
-          </Button>
-        )}
       </header>
 
-      <main
-        className="grid min-h-0 min-w-0 w-full flex-1 overflow-hidden motion-safe:transition-[grid-template-columns] motion-safe:duration-300 motion-safe:ease-in-out lg:grid-cols-[var(--library-width)_minmax(0,1fr)] xl:grid-cols-[var(--library-width)_minmax(0,1fr)_var(--source-width)]"
-        style={{
-          "--library-width": isLibraryExpanded ? "280px" : "0px",
-          "--source-width": isSourceExpanded ? "28%" : "0%",
-        } as CSSProperties}
-      >
-        <aside
-          aria-hidden={!isLibraryExpanded}
-          id="library-sidebar"
-          inert={!isLibraryExpanded}
-          className={cn(
-            "hidden min-h-0 min-w-0 overflow-hidden border-r border-border lg:flex motion-safe:transition-opacity motion-safe:duration-200",
-            isLibraryExpanded ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        >
-          <MaterialLibrary {...libraryProps} onCollapse={() => setIsLibraryExpanded(false)} />
-        </aside>
-        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-          <div className="shrink-0 border-b border-border px-5 py-6 sm:px-8 sm:py-8 xl:border-b-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h1 className="truncate font-heading text-2xl font-semibold tracking-tight sm:text-3xl">{selectedConversation?.title ?? "Ask your materials"}</h1>
-                <p className="mt-2 max-w-xl text-sm text-muted-foreground sm:text-base">Find answers grounded in your notes, PDFs, and lectures.</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button aria-label="Previous chats" onClick={() => setIsHistoryOpen(true)} size="icon-sm" title="Previous chats" variant="outline">
-                  <History aria-hidden="true" className="size-4" />
-                </Button>
-                {quiz && (
-                  <Button aria-pressed={showQuiz} onClick={() => setShowQuiz((current) => !current)} size="sm" variant="outline">
-                    <Sparkles className="size-4" /><span className="hidden sm:inline">Practice</span>
-                  </Button>
-                )}
-                <Button aria-controls="source-drawer" aria-expanded={isSourceOpen} aria-label="View source" className="xl:hidden" onClick={() => setIsSourceOpen(true)} size="sm" variant="outline">
-                  <BookOpenText className="size-4" /><span className="hidden sm:inline">View source</span>
-                </Button>
-                {!isSourceExpanded && (
-                  <Button aria-controls="source-sidebar" aria-expanded={false} aria-label="Expand source viewer" className="hidden xl:inline-flex" onClick={() => setIsSourceExpanded(true)} size="sm" type="button" variant="outline">
-                    <PanelRightOpen className="size-4" /><span>Source viewer</span>
-                  </Button>
-                )}
-              </div>
+      <main className="min-h-0 min-w-0 w-full flex-1 overflow-hidden">
+        {/* Desktop Draggable & Adjustable Layout */}
+        <div className="relative hidden h-full w-full lg:flex">
+          {/* Actionable button to pop back Library when collapsed (below header, top left) */}
+          {!isLibraryExpanded && (
+            <div className="pointer-events-none absolute left-3 top-3 z-30">
+              <Button
+                aria-label="Open library"
+                className="pointer-events-auto gap-1.5 border border-border bg-background/90 shadow-sm backdrop-blur-xs hover:bg-accent"
+                onClick={expandLibrary}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <PanelLeftOpen className="size-4 text-muted-foreground" />
+                <span>Library</span>
+              </Button>
             </div>
-          </div>
+          )}
+
+          {/* Actionable button to pop back Source Viewer when collapsed (below header, top right) */}
+          {!isSourceExpanded && (
+            <div className="pointer-events-none absolute right-3 top-3 z-30">
+              <Button
+                aria-label="Open source viewer"
+                className="pointer-events-auto gap-1.5 border border-border bg-background/90 shadow-sm backdrop-blur-xs hover:bg-accent"
+                onClick={expandSource}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <PanelRightOpen className="size-4 text-muted-foreground" />
+                <span>Source viewer</span>
+              </Button>
+            </div>
+          )}
+
+          <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+            <ResizablePanel
+              panelRef={libraryPanelRef}
+              id="library-panel"
+              defaultSize="22%"
+              minSize="15%"
+              maxSize="38%"
+              collapsible={true}
+              onResize={(size) => {
+                setIsLibraryExpanded(size.asPercentage > 0);
+              }}
+              className="min-h-0 min-w-0 overflow-hidden"
+            >
+              <MaterialLibrary {...libraryProps} onCollapse={collapseLibrary} />
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            <ResizablePanel
+              id="chat-panel"
+              defaultSize="52%"
+              minSize="30%"
+              className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background"
+            >
+              <ChatThread
+                key={selectedConversationId ?? "current"}
+                messages={chatMessages}
+                onOpenCitation={openCitation}
+                onRetry={onRetry ?? (() => setActiveChatState("idle"))}
+                quiz={showQuiz ? quiz ?? undefined : undefined}
+                state={activeChatState}
+              />
+              <ChatComposer isBusy={activeChatState === "searching" || activeChatState === "streaming"} onSend={handleSend} />
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            <ResizablePanel
+              panelRef={sourcePanelRef}
+              id="source-panel"
+              defaultSize="26%"
+              minSize="18%"
+              maxSize="45%"
+              collapsible={true}
+              onResize={(size) => {
+                setIsSourceExpanded(size.asPercentage > 0);
+              }}
+              className="min-h-0 min-w-0 overflow-hidden"
+            >
+              <SourceViewer {...sourceProps} onCollapse={collapseSource} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+
+        {/* Mobile / Tablet Fluid Chat Layout (Drawers handle sidebars) */}
+        <div className="flex h-full w-full flex-col overflow-hidden lg:hidden">
           <ChatThread
             key={selectedConversationId ?? "current"}
-            messages={visibleMessages}
+            messages={chatMessages}
             onOpenCitation={openCitation}
-            onRetry={onRetry}
+            onRetry={onRetry ?? (() => setActiveChatState("idle"))}
             quiz={showQuiz ? quiz ?? undefined : undefined}
-            state={chatState}
+            state={activeChatState}
           />
-          <ChatComposer isBusy={chatState === "searching" || chatState === "streaming"} onSend={onSend} />
-        </section>
-        <aside
-          aria-hidden={!isSourceExpanded}
-          id="source-sidebar"
-          inert={!isSourceExpanded}
-          className={cn(
-            "hidden min-h-0 min-w-0 overflow-hidden border-l border-border xl:flex motion-safe:transition-opacity motion-safe:duration-200",
-            isSourceExpanded ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        >
-          <SourceViewer {...sourceProps} onCollapse={() => setIsSourceExpanded(false)} />
-        </aside>
+          <ChatComposer isBusy={activeChatState === "searching" || activeChatState === "streaming"} onSend={handleSend} />
+        </div>
       </main>
 
       <Sheet onOpenChange={setIsLibraryOpen} open={isLibraryOpen}>

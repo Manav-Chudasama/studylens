@@ -46,8 +46,8 @@ export function ChatComposer({ isBusy = false, onSend }: ChatComposerProps) {
   }
 
   return (
-    <div className="shrink-0 border-t border-border bg-background p-4 sm:px-8 sm:py-5">
-      <div className="mx-auto max-w-3xl">
+    <div className="shrink-0 border-t border-border bg-background p-4 sm:px-6 sm:py-4">
+      <div className="mx-auto max-w-4xl">
         <Suggestions className="mb-3" onSelect={setDraft}>
           <SuggestionList className="justify-start">
             <Suggestion value="Summarize my materials">Summarize my materials</Suggestion>

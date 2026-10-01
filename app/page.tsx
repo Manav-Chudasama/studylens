@@ -1,5 +1,5 @@
-import { StudyWorkspace } from "@/components/study-workspace";
+import { NotebookDashboard } from "@/components/study/notebook-dashboard";
 
 export default function Home() {
-  return <StudyWorkspace />;
+  return <NotebookDashboard />;
 }
