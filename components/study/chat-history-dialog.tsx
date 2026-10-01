@@ -51,7 +51,7 @@ export function ChatHistoryDialog({
             <p className="mt-1 text-sm text-muted-foreground">Your saved conversations will appear here.</p>
           </div>
         ) : (
-          <ScrollArea className="h-[min(24rem,55svh)]">
+          <ScrollArea className="max-h-[55svh]" style={{ height: Math.min(conversations.length * 72, 384) }}>
             <div className="space-y-1 pr-3">
               {conversations.map((conversation) => (
                 <Button

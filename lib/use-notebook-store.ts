@@ -77,7 +77,7 @@ export function useNotebookHydration() {
 
   useEffect(() => {
     let isMounted = true;
-    void useNotebookStore.persist.rehydrate().finally(() => {
+    void Promise.resolve(useNotebookStore.persist.rehydrate()).finally(() => {
       if (isMounted) setHasHydrated(true);
     });
     return () => { isMounted = false; };

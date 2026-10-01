@@ -2,6 +2,8 @@
 
 ## Workspace layout
 
+- Signed-in study starts on a notebook dashboard. Cards lead to notebook-specific workspaces; the dashboard offers search and notebook creation. Keep the dashboard's section and card layout inspired by the supplied reference while using the project's semantic monochrome theme.
+- A notebook owns its materials, source previews, conversations, and practice content. Workspace breadcrumbs return to the notebook dashboard. A new notebook opens with empty library, chat, and source states.
 - The primary workspace follows the approved preview: library on the left, chat in the center, and source viewer on the right.
 - At medium widths, the library remains visible and the source viewer opens as a drawer. At phone widths, both side panels open as drawers.
 - The chat composer stays at the bottom of the center column. Citations open the corresponding source in the desktop panel or mobile drawer.
@@ -24,4 +26,5 @@
 - Upload, chat send, account actions, and Telegram linking accept optional callbacks. When absent, the UI states clearly that the backend is not connected and does not claim success.
 - Authentication screens use email and password. The account dialog leads to sign-in and sign-up and includes an on-demand Telegram connection area.
 - The workspace accepts a viewer and saved conversations as props for future backend wiring. Selecting a history item switches the visible thread and clears stale citation and practice state; the parent remains responsible for fetching only that viewer's data.
+- Until authentication and database storage are connected, `/dashboard` and notebook routes use a sample signed-in viewer. Newly created notebook names are stored in this browser with validated Zustand persistence; the UI says this local storage is temporary. Never treat this sample viewer or browser storage as account authorization.
 - Sign-in, sign-up, and password reset fill the viewport without an outer card: a grayscale StudyLens illustration on the left with the brand overlaid, and the form on the right at desktop sizes. On smaller screens, prioritize the form and hide the illustration. Avoid document scrolling at ordinary viewport sizes; allow panel-local overflow on unusually short screens so fields remain accessible. Use only the existing theme tokens and avoid implying unsupported sign-in providers.

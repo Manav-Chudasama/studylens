@@ -38,6 +38,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 type StudyWorkspaceProps = {
+  notebookTitle?: string;
   materials?: Material[];
   messages?: StudyMessage[];
   previews?: Record<string, SourcePreview>;
@@ -45,6 +46,7 @@ type StudyWorkspaceProps = {
   chatState?: ChatState;
   viewer?: StudyUser | null;
   conversations?: StudyConversation[];
+  initialConversationId?: string;
   onSelectConversation?: (id: string) => void;
   onUpload?: (request: MaterialUploadRequest) => Promise<void>;
   onSend?: (submission: ChatSubmission) => Promise<void>;
@@ -54,6 +56,7 @@ type StudyWorkspaceProps = {
 
 /** Composes the study UI around typed data and optional future backend actions. */
 export function StudyWorkspace({
+  notebookTitle,
   materials = sampleMaterials,
   messages = sampleMessages,
   previews = samplePreviews,
@@ -61,6 +64,7 @@ export function StudyWorkspace({
   chatState = "idle",
   viewer = null,
   conversations = [],
+  initialConversationId,
   onSelectConversation,
   onUpload,
   onSend,
@@ -77,7 +81,7 @@ export function StudyWorkspace({
   const [showQuiz, setShowQuiz] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [selectedConversationId, setSelectedConversationId] = useState<string>();
+  const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>(initialConversationId);
   const selectedConversation = viewer && conversations.find((conversation) => conversation.id === selectedConversationId);
   const visibleMessages = selectedConversation?.messages ?? messages;
   const selectedMaterial = materials.find((material) => material.id === selectedId);
@@ -140,10 +144,17 @@ export function StudyWorkspace({
               <PanelLeftOpen />
             </Button>
           )}
-          <span className="font-heading text-xl font-semibold tracking-tight">StudyLens</span>
+          {notebookTitle ? (
+            <Link className="font-heading text-xl font-semibold tracking-tight" href="/dashboard">StudyLens</Link>
+          ) : (
+            <span className="font-heading text-xl font-semibold tracking-tight">StudyLens</span>
+          )}
         </div>
         <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-          <BookOpenText className="size-4" /> My study library
+          <BookOpenText className="size-4" />
+          {notebookTitle ? (
+            <><Link className="hover:text-foreground" href="/dashboard">Notebooks</Link><span aria-hidden="true">/</span><span className="max-w-48 truncate text-foreground">{notebookTitle}</span></>
+          ) : "My study library"}
         </div>
         {viewer ? (
           <Button aria-label={`Account for ${viewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
