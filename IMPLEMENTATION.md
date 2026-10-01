@@ -13,6 +13,7 @@
    - Upgraded desktop workspace to draggable, adjustable sidebars via Shadcn Resizable panels (`ResizablePanelGroup`, `ResizablePanel`, `ResizableHandle withHandle`).
    - Streamlined workspace layout inspired by Google Gemini NotebookLM: moved notebook breadcrumbs and contextual controls (`History`, `Practice`, `Source viewer`, `Sign in`) into the top header, eliminating the inner chat banner to grant the conversation thread 100% vertical viewport height.
    - Resolved `react-resizable-panels` v4 unknown property console warnings (`onExpand`, `onCollapse`) by tracking panel state dynamically via `onResize` and panel refs. Added prominent pop-back action buttons below the header in the top-left (Library) and top-right (Source viewer) whenever sidebars are collapsed.
+   - Consolidated all test suites into a dedicated `tests/` directory (`tests/notebook-fixtures.test.ts`, `tests/study-workspace.test.tsx`, `tests/study-ui.test.tsx`) executed via Bun Test Runner.
 3. **Accounts and storage — planned:** Supabase email/password authentication, private materials, and ownership rules.
 4. **Ingestion and retrieval — planned:** PDF, OCR, text, Markdown, embeddings, and vector search.
 5. **Grounded chat and citations — planned:** evidence checks, Gemini answers, OpenAI fallback, and source-linked responses.
