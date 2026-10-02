@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Library, PanelLeftClose, PlayCircle, Plus, Search } from "lucide-react";
+import { FileText, Library, PanelLeftClose, PlayCircle, Plus, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ type MaterialLibraryProps = {
   onSelect: (id: string) => void;
   onUploadClick: () => void;
   onCollapse?: () => void;
+  onDelete?: (id: string) => void;
 };
 
 /** Browse the current student's materials and open the upload flow. */
@@ -29,6 +30,7 @@ export function MaterialLibrary({
   onSelect,
   onUploadClick,
   onCollapse,
+  onDelete,
 }: MaterialLibraryProps) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -58,13 +60,12 @@ export function MaterialLibrary({
           <Library aria-hidden="true" className="size-4 text-muted-foreground" />
         )}
       </div>
-      <Button className="h-10 w-full" onClick={onUploadClick}>
-        <Plus /> Upload material
+      <Button className="w-full justify-start" onClick={onUploadClick} variant="outline">
+        <Plus className="mr-2 size-4" /> Upload material
       </Button>
       <div className="relative mt-4">
-        <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          aria-label="Search materials"
           className="pl-9"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search materials"
@@ -91,6 +92,7 @@ export function MaterialLibrary({
                 isSelected={material.id === selectedId}
                 key={material.id}
                 material={material}
+                onDelete={onDelete}
                 onSelect={onSelect}
               />
             ))}
@@ -115,27 +117,35 @@ function MaterialRow({
   isSelected,
   material,
   onSelect,
+  onDelete,
 }: {
   isSelected: boolean;
   material: Material;
   onSelect: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const Icon = material.type === "video" ? PlayCircle : FileText;
 
   return (
-    <button
-      aria-current={isSelected ? "true" : undefined}
+    <div
       className={cn(
-        "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted cursor-pointer",
         isSelected ? "border-border bg-muted" : "border-transparent",
       )}
       onClick={() => onSelect(material.id)}
-      type="button"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(material.id);
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-background">
         <Icon className="size-5" />
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 pr-6">
         <span className="block truncate text-sm font-medium">{material.title}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{material.detail}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{material.addedLabel}</span>
@@ -145,6 +155,24 @@ function MaterialRow({
           {material.status === "failed" ? "Failed" : "Processing"}
         </Badge>
       )}
-    </button>
+
+      {onDelete && (
+        <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            aria-label={`Remove ${material.title}`}
+            className="size-7 text-muted-foreground hover:text-destructive hover:bg-background/80"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(material.id);
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

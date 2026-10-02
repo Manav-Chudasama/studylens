@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, Search, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, Check, Copy, RotateCw, Search, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import {
   Citation as NexusCitation,
@@ -29,6 +30,7 @@ type ChatThreadProps = {
   quiz?: QuizQuestion;
   onOpenCitation: (citation: Citation) => void;
   onRetry?: () => void;
+  onRegenerate?: () => void;
 };
 
 /** Renders a source-linked conversation using Nexus Thread and Message primitives. */
@@ -38,13 +40,19 @@ export function ChatThread({
   quiz,
   onOpenCitation,
   onRetry,
+  onRegenerate,
 }: ChatThreadProps) {
   return (
     <Thread className="min-h-0 flex-1 overflow-hidden">
       <ThreadContent className="mx-auto w-full max-w-4xl gap-6 px-4 py-6 sm:px-6 sm:py-8" scrollClassName="overscroll-contain">
         {messages.length === 0 && <ChatEmptyState />}
         {messages.map((message) => (
-          <ChatTurn key={message.id} message={message} onOpenCitation={onOpenCitation} />
+          <ChatTurn
+            key={message.id}
+            message={message}
+            onOpenCitation={onOpenCitation}
+            onRegenerate={onRegenerate}
+          />
         ))}
         {state === "searching" && (
           <Tool className="max-w-xs" status="running">
@@ -73,9 +81,11 @@ export function ChatThread({
 function ChatTurn({
   message,
   onOpenCitation,
+  onRegenerate,
 }: {
   message: StudyMessage;
   onOpenCitation: (citation: Citation) => void;
+  onRegenerate?: () => void;
 }) {
   const isAssistant = message.role === "assistant";
 
@@ -102,10 +112,81 @@ function ChatTurn({
               ))}
             </div>
           )}
+          {isAssistant && (
+            <MessageActionBar content={message.content} onRegenerate={onRegenerate} />
+          )}
         </MessageContent>
       </MessageStack>
       {!isAssistant && <MessageAvatarFallback label="You" />}
     </Message>
+  );
+}
+
+function MessageActionBar({
+  content,
+  onRegenerate,
+}: {
+  content: string;
+  onRegenerate?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+
+  function handleCopy() {
+    if (typeof navigator !== "undefined") {
+      navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-1 text-muted-foreground">
+      <Button
+        aria-label={copied ? "Copied" : "Copy answer"}
+        className="size-7 text-muted-foreground hover:text-foreground"
+        onClick={handleCopy}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+      </Button>
+      {onRegenerate && (
+        <Button
+          aria-label="Regenerate answer"
+          className="size-7 text-muted-foreground hover:text-foreground"
+          onClick={onRegenerate}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <RotateCw className="size-3.5" />
+        </Button>
+      )}
+      <Button
+        aria-label="Good response"
+        aria-pressed={feedback === "up"}
+        className="size-7 text-muted-foreground hover:text-foreground"
+        onClick={() => setFeedback(feedback === "up" ? null : "up")}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <ThumbsUp className={`size-3.5 ${feedback === "up" ? "text-primary" : ""}`} />
+      </Button>
+      <Button
+        aria-label="Poor response"
+        aria-pressed={feedback === "down"}
+        className="size-7 text-muted-foreground hover:text-foreground"
+        onClick={() => setFeedback(feedback === "down" ? null : "down")}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <ThumbsDown className={`size-3.5 ${feedback === "down" ? "text-destructive" : ""}`} />
+      </Button>
+    </div>
   );
 }
 

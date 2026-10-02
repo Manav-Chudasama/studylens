@@ -3,9 +3,21 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenText, BrainCircuit, CalendarDays, Database, Plus, Search, ArrowUpRight } from "lucide-react";
+import {
+  BookOpenText,
+  BrainCircuit,
+  CalendarDays,
+  Database,
+  MoreVertical,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  ArrowUpRight,
+} from "lucide-react";
 
 import { AccountDialog } from "@/components/study/account-dialog";
+import { ThemeToggle } from "@/components/study/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,9 +25,16 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,12 +48,22 @@ const notebookIcons = [BookOpenText, Database, BrainCircuit, CalendarDays];
 export function NotebookDashboard() {
   const router = useRouter();
   const createdNotebooks = useNotebookStore((state) => state.createdNotebooks);
+  const deletedNotebookIds = useNotebookStore((state) => state.deletedNotebookIds);
   const createNotebook = useNotebookStore((state) => state.createNotebook);
+  const updateNotebook = useNotebookStore((state) => state.updateNotebook);
+  const deleteNotebook = useNotebookStore((state) => state.deleteNotebook);
   const hasHydrated = useNotebookHydration();
+
   const [query, setQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  const notebooks = [...createdNotebooks, ...sampleNotebooks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const [editingNotebook, setEditingNotebook] = useState<StudyNotebook | null>(null);
+  const [deletingNotebook, setDeletingNotebook] = useState<StudyNotebook | null>(null);
+
+  const notebooks = [...createdNotebooks, ...sampleNotebooks]
+    .filter((nb) => !deletedNotebookIds.includes(nb.id))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
   const filteredNotebooks = notebooks.filter((notebook) =>
     `${notebook.title} ${notebook.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );
@@ -47,6 +76,18 @@ export function NotebookDashboard() {
     const id = createNotebook(details);
     setIsCreateOpen(false);
     router.push(`/notebooks/${id}`);
+  }
+
+  function handleSaveEdit(details: { title: string; description: string }) {
+    if (!editingNotebook) return;
+    updateNotebook(editingNotebook.id, details);
+    setEditingNotebook(null);
+  }
+
+  function handleConfirmDelete() {
+    if (!deletingNotebook) return;
+    deleteNotebook(deletingNotebook.id);
+    setDeletingNotebook(null);
   }
 
   return (
@@ -62,6 +103,7 @@ export function NotebookDashboard() {
               <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input aria-label="Search notebooks" className="h-9 pl-9" onChange={(event) => setQuery(event.target.value)} placeholder="Search notebooks" value={query} />
             </div>
+            <ThemeToggle />
             <Button aria-label={`Account for ${previewViewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
               <Avatar size="sm"><AvatarFallback>S</AvatarFallback></Avatar>
             </Button>
@@ -104,7 +146,16 @@ export function NotebookDashboard() {
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                {featuredNotebooks.map((notebook, index) => <NotebookCard featured index={index} key={notebook.id} notebook={notebook} />)}
+                {featuredNotebooks.map((notebook, index) => (
+                  <NotebookCard
+                    featured
+                    index={index}
+                    key={notebook.id}
+                    notebook={notebook}
+                    onDelete={() => setDeletingNotebook(notebook)}
+                    onEdit={() => setEditingNotebook(notebook)}
+                  />
+                ))}
               </div>
             </section>}
 
@@ -114,7 +165,15 @@ export function NotebookDashboard() {
                 <span className="text-sm text-muted-foreground">{filteredNotebooks.length} {filteredNotebooks.length === 1 ? "notebook" : "notebooks"}</span>
               </div>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {filteredNotebooks.map((notebook, index) => <NotebookCard index={index} key={notebook.id} notebook={notebook} />)}
+                {filteredNotebooks.map((notebook, index) => (
+                  <NotebookCard
+                    index={index}
+                    key={notebook.id}
+                    notebook={notebook}
+                    onDelete={() => setDeletingNotebook(notebook)}
+                    onEdit={() => setEditingNotebook(notebook)}
+                  />
+                ))}
               </div>
             </section>
           </>
@@ -124,12 +183,40 @@ export function NotebookDashboard() {
       </main>
 
       <NewNotebookDialog isOpen={isCreateOpen} onCreate={create} onOpenChange={setIsCreateOpen} />
+      {editingNotebook && (
+        <EditNotebookDialog
+          isOpen={Boolean(editingNotebook)}
+          notebook={editingNotebook}
+          onOpenChange={(open) => !open && setEditingNotebook(null)}
+          onSave={handleSaveEdit}
+        />
+      )}
+      {deletingNotebook && (
+        <DeleteNotebookDialog
+          isOpen={Boolean(deletingNotebook)}
+          notebookTitle={deletingNotebook.title}
+          onConfirm={handleConfirmDelete}
+          onOpenChange={(open) => !open && setDeletingNotebook(null)}
+        />
+      )}
       <AccountDialog isOpen={isAccountOpen} onOpenChange={setIsAccountOpen} viewer={previewViewer} />
     </div>
   );
 }
 
-function NotebookCard({ notebook, index, featured = false }: { notebook: StudyNotebook; index: number; featured?: boolean }) {
+function NotebookCard({
+  notebook,
+  index,
+  featured = false,
+  onEdit,
+  onDelete,
+}: {
+  notebook: StudyNotebook;
+  index: number;
+  featured?: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const Icon = notebookIcons[index % notebookIcons.length];
   const content = sampleNotebookContent[notebook.id];
   const materialCount = content?.materials.length ?? 0;
@@ -141,25 +228,62 @@ function NotebookCard({ notebook, index, featured = false }: { notebook: StudyNo
   }).format(new Date(notebook.updatedAt));
 
   return (
-    <Link className="group block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25" href={`/notebooks/${notebook.id}`}>
-      <Card className="h-full gap-0 overflow-hidden py-0 shadow-none ring-1 ring-border transition-[box-shadow,transform] duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md">
-        <div className={`relative flex items-start justify-between overflow-hidden border-b border-border bg-muted p-5 ${featured ? "h-40 sm:h-44" : "h-28"}`}>
-          <div aria-hidden="true" className="absolute -right-8 -bottom-20 size-56 rounded-full border-[24px] border-background/70" />
-          <div aria-hidden="true" className="absolute right-10 -bottom-16 size-36 rounded-full border-[18px] border-background/50" />
-          <span className="relative flex size-11 items-center justify-center rounded-xl border border-border bg-card shadow-sm"><Icon aria-hidden="true" className="size-5" /></span>
-          <ArrowUpRight aria-hidden="true" className="relative size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-        </div>
-        <CardContent className="flex flex-1 flex-col p-5">
-          <h3 className="truncate font-heading text-lg font-semibold">{notebook.title}</h3>
-          <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{notebook.description || "Your new study space"}</p>
-          <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
-            <span>{materialCount} {materialCount === 1 ? "source" : "sources"}</span>
-            <span>{chatCount} {chatCount === 1 ? "chat" : "chats"}</span>
-            <span className="ml-auto">Updated {updated}</span>
+    <div className="group relative block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25">
+      <Link className="block h-full" href={`/notebooks/${notebook.id}`}>
+        <Card className="h-full gap-0 overflow-hidden py-0 shadow-none ring-1 ring-border transition-[box-shadow,transform] duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md">
+          <div className={`relative flex items-start justify-between overflow-hidden border-b border-border bg-muted p-5 ${featured ? "h-40 sm:h-44" : "h-28"}`}>
+            <div aria-hidden="true" className="absolute -right-8 -bottom-20 size-56 rounded-full border-[24px] border-background/70" />
+            <div aria-hidden="true" className="absolute right-10 -bottom-16 size-36 rounded-full border-[18px] border-background/50" />
+            <span className="relative flex size-11 items-center justify-center rounded-xl border border-border bg-card shadow-sm"><Icon aria-hidden="true" className="size-5" /></span>
+            <div className="relative z-10 flex items-center gap-1">
+              <ArrowUpRight aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+          <CardContent className="flex flex-1 flex-col p-5">
+            <h3 className="truncate font-heading text-lg font-semibold">{notebook.title}</h3>
+            <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{notebook.description || "Your new study space"}</p>
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+              <span>{materialCount} {materialCount === 1 ? "source" : "sources"}</span>
+              <span>{chatCount} {chatCount === 1 ? "chat" : "chats"}</span>
+              <span className="ml-auto">Updated {updated}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+
+      {/* Dropdown Menu for Notebook Actions */}
+      <div className="absolute right-3 top-3 z-20">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Options for ${notebook.title}`}
+            className="flex size-7 items-center justify-center rounded-md border border-border/80 bg-background/80 text-muted-foreground opacity-80 backdrop-blur-xs transition-opacity hover:opacity-100 hover:text-foreground focus:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreVertical className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem
+              className="gap-2 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+            >
+              <Pencil className="size-3.5" /> Edit details
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2 text-xs text-destructive focus:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 className="size-3.5" /> Delete notebook
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }
 
@@ -185,24 +309,106 @@ function NewNotebookDialog({ isOpen, onOpenChange, onCreate }: { isOpen: boolean
     <Dialog onOpenChange={onOpenChange} open={isOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create notebook</DialogTitle>
-          <DialogDescription>Give this study space a name. Add materials and chats inside it.</DialogDescription>
+          <DialogTitle className="font-heading">Create notebook</DialogTitle>
+          <DialogDescription>Group materials, practice questions, and notes for one topic.</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={submit}>
           <div className="space-y-2">
-            <Label htmlFor="notebook-title">Notebook name</Label>
-            <Input autoFocus id="notebook-title" maxLength={80} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Data Structures" value={title} />
+            <Label htmlFor="notebook-title">Title</Label>
+            <Input id="notebook-title" onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Linear Algebra, Distributed Systems" value={title} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="notebook-description">Description <span className="font-normal text-muted-foreground">(optional)</span></Label>
-            <Textarea id="notebook-description" maxLength={160} onChange={(event) => setDescription(event.target.value)} placeholder="What will you study here?" rows={3} value={description} />
+            <Label htmlFor="notebook-description">Description</Label>
+            <Textarea className="min-h-24 resize-none" id="notebook-description" onChange={(event) => setDescription(event.target.value)} placeholder="Optional summary or syllabus goals" value={description} />
           </div>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <div className="flex justify-end gap-2 pt-1">
+          {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
             <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancel</Button>
             <Button type="submit">Create notebook</Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditNotebookDialog({
+  isOpen,
+  notebook,
+  onOpenChange,
+  onSave,
+}: {
+  isOpen: boolean;
+  notebook: StudyNotebook;
+  onOpenChange: (open: boolean) => void;
+  onSave: (details: { title: string; description: string }) => void;
+}) {
+  const [title, setTitle] = useState(notebook.title);
+  const [description, setDescription] = useState(notebook.description);
+  const [error, setError] = useState("");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = notebookDetailsSchema.safeParse({ title, description });
+    if (!result.success) {
+      setError(result.error.issues[0]?.message ?? "Check your notebook details.");
+      return;
+    }
+    setError("");
+    onSave(result.data);
+  }
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={isOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-heading">Edit notebook</DialogTitle>
+          <DialogDescription>Update the title or summary for this notebook.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={submit}>
+          <div className="space-y-2">
+            <Label htmlFor="edit-notebook-title">Title</Label>
+            <Input id="edit-notebook-title" onChange={(event) => setTitle(event.target.value)} value={title} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-notebook-description">Description</Label>
+            <Textarea className="min-h-24 resize-none" id="edit-notebook-description" onChange={(event) => setDescription(event.target.value)} value={description} />
+          </div>
+          {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancel</Button>
+            <Button type="submit">Save changes</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteNotebookDialog({
+  isOpen,
+  notebookTitle,
+  onOpenChange,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  notebookTitle: string;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog onOpenChange={onOpenChange} open={isOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-destructive">Delete notebook?</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete &ldquo;{notebookTitle}&rdquo;? This will remove its materials and conversations.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancel</Button>
+          <Button onClick={onConfirm} type="button" variant="destructive">Delete</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -34,4 +34,15 @@ describe("workspace account header", () => {
     expect(markup).not.toContain("onCollapse=");
     expect(markup).not.toContain("onExpand=");
   });
+
+  test("renders New chat, Studio, and Share actions in the workspace header", () => {
+    const markup = renderToStaticMarkup(
+      <StudyWorkspace notebookTitle="Distributed Systems" />,
+    );
+
+    expect(markup).toContain("New chat");
+    expect(markup).toContain("Studio");
+    expect(markup).toContain("Share");
+    expect(markup).toContain("Switch to dark mode");
+  });
 });

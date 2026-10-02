@@ -19,7 +19,10 @@ const notebookSchema = notebookDetailsSchema.extend({
 });
 
 const persistedStateSchema = z.object({
-  state: z.object({ createdNotebooks: z.array(notebookSchema) }),
+  state: z.object({
+    createdNotebooks: z.array(notebookSchema),
+    deletedNotebookIds: z.array(z.string()).optional(),
+  }),
   version: z.number(),
 });
 
@@ -27,7 +30,10 @@ type NotebookDetails = z.infer<typeof notebookDetailsSchema>;
 
 type NotebookStore = {
   createdNotebooks: StudyNotebook[];
+  deletedNotebookIds: string[];
   createNotebook: (details: NotebookDetails) => string;
+  updateNotebook: (id: string, details: Partial<NotebookDetails>) => void;
+  deleteNotebook: (id: string) => void;
 };
 
 /** Browser-local notebook names for the UI phase; account storage will replace this source. */
@@ -35,6 +41,7 @@ export const useNotebookStore = create<NotebookStore>()(
   persist(
     (set) => ({
       createdNotebooks: [],
+      deletedNotebookIds: [],
       createNotebook: (details) => {
         const validated = notebookDetailsSchema.parse(details);
         const now = new Date().toISOString();
@@ -47,11 +54,28 @@ export const useNotebookStore = create<NotebookStore>()(
         set((state) => ({ createdNotebooks: [notebook, ...state.createdNotebooks] }));
         return notebook.id;
       },
+      updateNotebook: (id, details) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          createdNotebooks: state.createdNotebooks.map((nb) =>
+            nb.id === id ? { ...nb, ...details, updatedAt: now } : nb
+          ),
+        }));
+      },
+      deleteNotebook: (id) => {
+        set((state) => ({
+          createdNotebooks: state.createdNotebooks.filter((nb) => nb.id !== id),
+          deletedNotebookIds: [...state.deletedNotebookIds, id],
+        }));
+      },
     }),
     {
       name: "studylens-preview-notebooks",
       version: 1,
-      partialize: (state) => ({ createdNotebooks: state.createdNotebooks }),
+      partialize: (state) => ({
+        createdNotebooks: state.createdNotebooks,
+        deletedNotebookIds: state.deletedNotebookIds,
+      }),
       skipHydration: true,
       storage: createJSONStorage(() => ({
         getItem: (name) => {

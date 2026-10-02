@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpenText, History, LogIn, Menu, PanelLeftOpen, PanelRightOpen, Sparkles } from "lucide-react";
+import { BookOpenText, History, LogIn, Menu, PanelLeftOpen, PanelRightOpen, Plus, Share2, Sparkles } from "lucide-react";
 import { usePanelRef } from "react-resizable-panels";
 
 import {
@@ -17,7 +17,10 @@ import { ChatHistoryDialog } from "@/components/study/chat-history-dialog";
 import { ChatThread, type ChatState } from "@/components/study/chat-thread";
 import { MaterialLibrary } from "@/components/study/material-library";
 import { MaterialUpload, type MaterialUploadRequest } from "@/components/study/material-upload";
+import { ShareExportDialog } from "@/components/study/share-export-dialog";
 import { SourceViewer } from "@/components/study/source-viewer";
+import { StudyStudioDialog } from "@/components/study/study-studio";
+import { ThemeToggle } from "@/components/study/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,6 +81,7 @@ export function StudyWorkspace({
   onRetry,
   onConnectTelegram,
 }: StudyWorkspaceProps) {
+  const [activeMaterials, setActiveMaterials] = useState<Material[]>(materials);
   const [selectedId, setSelectedId] = useState<string | undefined>(materials[0]?.id);
   const [selectedCitation, setSelectedCitation] = useState<Citation | undefined>();
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -85,13 +89,15 @@ export function StudyWorkspace({
   const [isLibraryExpanded, setIsLibraryExpanded] = useState(true);
   const [isSourceExpanded, setIsSourceExpanded] = useState(true);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>(initialConversationId);
   const selectedConversation = viewer && conversations.find((conversation) => conversation.id === selectedConversationId);
   const visibleMessages = selectedConversation?.messages ?? messages;
-  const selectedMaterial = materials.find((material) => material.id === selectedId);
+  const selectedMaterial = activeMaterials.find((material) => material.id === selectedId);
 
   const [chatMessages, setChatMessages] = useState<StudyMessage[]>(visibleMessages);
   const [activeChatState, setActiveChatState] = useState<ChatState>(chatState);
@@ -206,6 +212,73 @@ export function StudyWorkspace({
     setIsSourceExpanded(false);
   }
 
+  function handleNewChat() {
+    setChatMessages([]);
+    setSelectedConversationId(undefined);
+    setShowQuiz(false);
+    setActiveChatState("idle");
+  }
+
+  function handleRegenerate() {
+    const lastUserMessage = [...chatMessages].reverse().find((m) => m.role === "user");
+    if (!lastUserMessage) return;
+    setActiveChatState("searching");
+    setTimeout(() => {
+      setActiveChatState("streaming");
+      setTimeout(() => {
+        const targetMaterial = selectedMaterial ?? activeMaterials[0];
+        const preview = targetMaterial ? previews[targetMaterial.id] : undefined;
+        const excerpt = preview?.excerpt || "Evaluation uses held-out examples to estimate how well the model generalizes.";
+        const updatedAssistantMessage: StudyMessage = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: `Here is a refreshed grounded synthesis from **${targetMaterial?.title ?? "your materials"}**:\n\n> "${excerpt}"\n\nThis addresses your prompt from another analytical angle. Click the citation below to inspect the passage.`,
+          citations: targetMaterial ? [{
+            id: `citation-${Date.now()}`,
+            materialId: targetMaterial.id,
+            title: targetMaterial.title,
+            excerpt: excerpt,
+            location: targetMaterial.type === "pdf"
+              ? { kind: "page", page: 4 }
+              : targetMaterial.type === "video"
+              ? { kind: "timestamp", seconds: 872 }
+              : { kind: "section", section: "1.2" },
+          }] : [],
+          activity: "Regenerated grounded answer",
+        };
+        setChatMessages((prev) => [...prev, updatedAssistantMessage]);
+        setActiveChatState("idle");
+      }, 900);
+    }, 600);
+  }
+
+  function handleStudioGenerate(title: string, content: string) {
+    const targetMaterial = selectedMaterial ?? activeMaterials[0];
+    const preview = targetMaterial ? previews[targetMaterial.id] : undefined;
+    const studioMessage: StudyMessage = {
+      id: `studio-${Date.now()}`,
+      role: "assistant",
+      content: content,
+      citations: targetMaterial ? [{
+        id: `citation-${Date.now()}`,
+        materialId: targetMaterial.id,
+        title: targetMaterial.title,
+        excerpt: preview?.excerpt || "Synthesized from core study materials.",
+        location: { kind: "section", section: "1.0" },
+      }] : [],
+      activity: `Generated ${title}`,
+    };
+    setChatMessages((prev) => [...prev, studioMessage]);
+  }
+
+  function handleDeleteMaterial(id: string) {
+    setActiveMaterials((prev) => prev.filter((m) => m.id !== id));
+    if (selectedId === id) {
+      setSelectedId(undefined);
+      setSelectedCitation(undefined);
+    }
+  }
+
   function openMaterial(id: string) {
     setSelectedId(id);
     setSelectedCitation(undefined);
@@ -228,7 +301,8 @@ export function StudyWorkspace({
   }
 
   const libraryProps = {
-    materials,
+    materials: activeMaterials,
+    onDelete: handleDeleteMaterial,
     onSelect: openMaterial,
     onUploadClick: () => { setIsLibraryOpen(false); setIsUploadOpen(true); },
     selectedId,
@@ -261,6 +335,39 @@ export function StudyWorkspace({
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            aria-label="New chat"
+            className="gap-1.5"
+            onClick={handleNewChat}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Plus className="size-3.5" />
+            <span className="hidden sm:inline">New chat</span>
+          </Button>
+          <Button
+            aria-label="Study studio"
+            className="gap-1.5"
+            onClick={() => setIsStudioOpen(true)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Sparkles className="size-3.5" />
+            <span className="hidden md:inline">Studio</span>
+          </Button>
+          <Button
+            aria-label="Share notebook"
+            className="gap-1.5"
+            onClick={() => setIsShareOpen(true)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Share2 className="size-3.5" />
+            <span className="hidden lg:inline">Share</span>
+          </Button>
           {viewer && (
             <Button aria-label="Previous chats" onClick={() => setIsHistoryOpen(true)} size="sm" variant="ghost">
               <History aria-hidden="true" className="size-4" />
@@ -277,6 +384,7 @@ export function StudyWorkspace({
             <BookOpenText className="size-4" />
             <span className="hidden sm:inline">Source</span>
           </Button>
+          <ThemeToggle />
           <div className="mx-1 hidden h-4 w-px bg-border sm:block" />
           {viewer ? (
             <Button aria-label={`Account for ${viewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
@@ -355,6 +463,7 @@ export function StudyWorkspace({
                 key={selectedConversationId ?? "current"}
                 messages={chatMessages}
                 onOpenCitation={openCitation}
+                onRegenerate={handleRegenerate}
                 onRetry={onRetry ?? (() => setActiveChatState("idle"))}
                 quiz={showQuiz ? quiz ?? undefined : undefined}
                 state={activeChatState}
@@ -387,6 +496,7 @@ export function StudyWorkspace({
             key={selectedConversationId ?? "current"}
             messages={chatMessages}
             onOpenCitation={openCitation}
+            onRegenerate={handleRegenerate}
             onRetry={onRetry ?? (() => setActiveChatState("idle"))}
             quiz={showQuiz ? quiz ?? undefined : undefined}
             state={activeChatState}
@@ -419,6 +529,19 @@ export function StudyWorkspace({
         onOpenChange={setIsHistoryOpen}
         onSelect={selectConversation}
         selectedId={selectedConversationId}
+      />
+      <StudyStudioDialog
+        isOpen={isStudioOpen}
+        materialCount={activeMaterials.length}
+        notebookTitle={notebookTitle}
+        onGenerateContent={handleStudioGenerate}
+        onOpenChange={setIsStudioOpen}
+      />
+      <ShareExportDialog
+        isOpen={isShareOpen}
+        messages={chatMessages}
+        notebookTitle={notebookTitle}
+        onOpenChange={setIsShareOpen}
       />
       <AccountDialog isOpen={isAccountOpen} onConnectTelegram={onConnectTelegram} onOpenChange={setIsAccountOpen} viewer={viewer} />
     </div>
