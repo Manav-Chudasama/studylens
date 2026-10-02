@@ -8,6 +8,11 @@ export type Material = {
   detail: string;
   addedLabel: string;
   status: MaterialStatus;
+  sourceKind?: "pdf" | "txt" | "md" | "note";
+  storagePath?: string;
+  contentText?: string;
+  indexStatus?: "pending" | "indexing" | "ready" | "failed" | "unsupported";
+  indexError?: string;
 };
 
 export type SourceLocation =
@@ -31,6 +36,13 @@ export type StudyMessage = {
   activity?: string;
 };
 
+export type SavedChatTurn = {
+  conversationId: string;
+  title: string;
+  userMessage: StudyMessage;
+  assistantMessage: StudyMessage;
+};
+
 export type StudyUser = {
   id: string;
   displayName: string;
@@ -49,6 +61,8 @@ export type StudyNotebook = {
   description: string;
   createdAt: string;
   updatedAt: string;
+  materialCount?: number;
+  chatCount?: number;
 };
 
 export type QuizQuestion = {

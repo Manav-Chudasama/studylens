@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Send } from "lucide-react";
+import { signOut } from "@/app/auth/actions";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,21 @@ export function AccountDialog({ isOpen, onOpenChange, onConnectTelegram, viewer 
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setIsSigningOut(true);
+    try {
+      const result = await signOut();
+      if (!result.ok) { setError(result.message); return; }
+      onOpenChange(false);
+      window.location.assign(result.destination);
+    } catch {
+      setError("Could not sign out. Try again.");
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
 
   async function connectTelegram() {
     if (!onConnectTelegram) return;
@@ -53,7 +69,7 @@ export function AccountDialog({ isOpen, onOpenChange, onConnectTelegram, viewer 
           <div className="rounded-lg border border-border p-4">
             <p className="font-medium">{viewer?.displayName ?? "Student account"}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {viewer ? "Your study materials and conversations belong to this account." : "Email sign-in will protect your materials and conversations."}
+              {viewer ? "Your notebooks are saved to this account." : "Sign in to access your notebooks."}
             </p>
             {!viewer && (
               <div className="mt-3 flex gap-2">
@@ -61,6 +77,7 @@ export function AccountDialog({ isOpen, onOpenChange, onConnectTelegram, viewer 
                 <Button nativeButton={false} render={<Link href="/auth/sign-up" />} size="sm" variant="outline">Create account</Button>
               </div>
             )}
+            {viewer && <Button className="mt-3" disabled={isSigningOut} onClick={handleSignOut} size="sm" variant="outline">{isSigningOut ? "Signing out..." : "Sign out"}</Button>}
           </div>
           <div className="rounded-lg border border-border p-4">
             <div className="flex items-center justify-between gap-2">

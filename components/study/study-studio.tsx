@@ -5,7 +5,6 @@ import {
   FileText,
   HelpCircle,
   ListOrdered,
-  Mic,
   Pause,
   Play,
   RotateCcw,

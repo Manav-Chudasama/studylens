@@ -18,8 +18,21 @@
    - Added workspace top-bar study controls: "New chat" button to instantly reset the conversation thread, "Studio" dialog with study guide generation and interactive Audio Overview podcast player, "Share" dialog with read-only link copying and Markdown (.md) / plain text transcript export, and a persistent dark/light mode toggle.
    - Added message action bar on assistant responses: one-click copy to clipboard with checkmark feedback, response rating (thumbs up/down), and answer regeneration.
    - Added material removal action to the Library sidebar with hover controls.
-3. **Accounts and storage — planned:** Supabase email/password authentication, private materials, and ownership rules.
-4. **Ingestion and retrieval — planned:** PDF, OCR, text, Markdown, embeddings, and vector search.
+3. **Accounts and storage — auth and notebook storage implemented:**
+   - Installed `@supabase/ssr` and `@supabase/supabase-js`; added request-scoped server/browser clients and a Next.js 16 Proxy for cookie session refresh.
+   - Connected sign-up, sign-in, email confirmation callback, password reset request, password update, and sign-out. Server actions validate inputs with Zod and verify identity before password changes.
+   - Protected the dashboard and notebook routes with server-side JWT checks. Notebook create, edit, and delete operations verify the user and rely on owner-scoped queries plus RLS.
+   - Replaced the sample signed-in identity and browser-local notebook source in the active dashboard/workspace with account data. Existing browser-local preview notebook names remain in local storage but are not automatically assigned to an account.
+   - Applied `supabase/migrations/20261002142432_create_notebooks.sql` to the StudyLens Supabase project. Verified the table, RLS, and owner-only SELECT/INSERT/UPDATE/DELETE policies. The remote migration version matches the local filename.
+   - **Setup required:** copy `.env.example` values into a local `.env.local` without committing it; set `NEXT_PUBLIC_SITE_URL` to the deployed app origin outside local development. In Supabase Auth URL Configuration, allow `http://localhost:3000/auth/callback` and the corresponding deployment callback URL. Confirm signup and recovery email templates must return a PKCE `code` or `token_hash` to `/auth/callback`. Configure production SMTP before public use.
+   - Verified `bun x --bun tsc --noEmit`, full-project ESLint (`bun run lint`), and all 14 Bun tests pass with zero errors and zero warnings. Resolved the `theme-toggle.tsx` effect warning by migrating to `useSyncExternalStore`.
+4. **Material upload — storage implemented; retrieval planned:**
+   - Applied `supabase/migrations/20261002150123_create_materials.sql`: owner-scoped material rows, private `study-materials` bucket, and storage policies tied to the material owner and path. The remote migration version matches the local filename.
+   - The notebook Upload material dialog now saves pasted notes and uploads PDF, TXT, and Markdown files (up to 20 MB each, 10 per selection). Files use chunked resumable uploads directly to Storage; server actions verify notebook ownership, reserve a path, verify uploaded size, and mark the row ready.
+   - The library loads saved materials on page entry, allows deletion, and the source viewer displays pasted/text content or a private PDF preview. Notebook cards show material counts. Deleting a notebook removes its stored files.
+   - YouTube stays disabled until transcript support exists. Signed-in notebook chat and studio sample responses are disabled until retrieval can produce grounded answers.
+   - Static verification: TypeScript and ESLint passed. Per user request, the upload feature was not exercised; manual test steps are provided separately.
+   - Still planned: PDF text extraction, OCR, embeddings, vector search, and source-linked retrieval.
 5. **Grounded chat and citations — planned:** evidence checks, Gemini answers, OpenAI fallback, and source-linked responses.
 6. **Study tools and channels — planned:** YouTube transcripts, source-backed quizzes, and on-demand Telegram integration.
 

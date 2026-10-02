@@ -1,52 +1,117 @@
 "use client";
 
-import Link from "next/link";
-import { BookOpenText } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
+import { createNoteMaterial, completeFileMaterial, deleteMaterial, failFileMaterial, reserveFileMaterial } from "@/app/notebooks/material-actions";
+import { loadConversation, sendNotebookQuestion } from "@/app/notebooks/chat-actions";
 import { StudyWorkspace } from "@/components/study-workspace";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { previewViewer, sampleNotebookContent, sampleNotebooks } from "@/lib/notebook-fixtures";
-import { useNotebookHydration, useNotebookStore } from "@/lib/use-notebook-store";
+import type { ChatSubmission } from "@/components/study/chat-composer";
+import type { MaterialUploadRequest } from "@/components/study/material-upload";
+import { fileKind, MAX_FILE_BYTES } from "@/lib/material-schema";
+import type { Material, StudyConversation, StudyNotebook, StudyUser } from "@/lib/study-types";
+import { uploadPrivateFile } from "@/lib/upload-private-file";
 
-/** Opens one notebook with only that notebook's materials and conversations. */
-export function NotebookWorkspace({ notebookId }: { notebookId: string }) {
-  const hasHydrated = useNotebookHydration();
-  const createdNotebook = useNotebookStore((state) => state.createdNotebooks.find((notebook) => notebook.id === notebookId));
-  const notebook = sampleNotebooks.find((item) => item.id === notebookId) ?? createdNotebook;
+/** Connect one authenticated notebook's study UI to persisted materials. */
+export function NotebookWorkspace({ notebook, viewer, initialMaterials, initialConversations }: { notebook: StudyNotebook; viewer: StudyUser; initialMaterials: Material[]; initialConversations: StudyConversation[] }) {
+  const router = useRouter();
+  const [materials, setMaterials] = useState(initialMaterials);
+  const [conversations, setConversations] = useState(initialConversations);
 
-  if (!notebook) {
-    if (!hasHydrated) return <div aria-live="polite" className="min-h-svh bg-background p-8 text-sm text-muted-foreground">Opening notebook...</div>;
-
-    return (
-      <main className="flex min-h-svh items-center justify-center bg-background p-5">
-        <Card className="w-full max-w-md border border-border text-center shadow-none ring-0">
-          <CardContent className="space-y-4 py-8">
-            <BookOpenText aria-hidden="true" className="mx-auto size-8 text-muted-foreground" />
-            <div>
-              <h1 className="font-heading text-xl font-semibold">Notebook not found</h1>
-              <p className="mt-2 text-sm text-muted-foreground">This notebook is not in your study space.</p>
-            </div>
-            <Button nativeButton={false} render={<Link href="/" />}>Back to notebooks</Button>
-          </CardContent>
-        </Card>
-      </main>
-    );
+  async function indexMaterial(id: string) {
+    setMaterials((items) => items.map((item) => item.id === id ? { ...item, indexStatus: "indexing", indexError: undefined } : item));
+    try {
+      const response = await fetch(`/api/notebooks/${notebook.id}/materials/${id}/index`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "Indexing failed.");
+      setMaterials((items) => items.map((item) => item.id === id ? result.material as Material : item));
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Indexing failed. Retry this material.";
+      setMaterials((items) => items.map((item) => item.id === id ? { ...item, indexStatus: "failed", indexError: message } : item));
+    }
+    router.refresh();
   }
 
-  const content = sampleNotebookContent[notebook.id];
+  async function indexMaterials(ids: string[]) {
+    for (const id of ids) await indexMaterial(id);
+  }
+
+  async function handleUpload(request: MaterialUploadRequest) {
+    if (request.kind === "video") throw new Error("YouTube transcripts are not available yet.");
+    if (request.kind === "note") {
+      const result = await createNoteMaterial(notebook.id, { title: request.title, content: request.content });
+      if (!result.ok) throw new Error(result.message);
+      setMaterials((items) => [result.data, ...items]);
+      router.refresh();
+      void indexMaterials([result.data.id]);
+      return;
+    }
+    if (request.files.length > 10) throw new Error("Choose up to 10 files at once.");
+    const uploadedIds: string[] = [];
+    for (const file of request.files) {
+      if (!fileKind(file.name) || file.size < 1 || file.size > MAX_FILE_BYTES) {
+        throw new Error(`${file.name}: choose a PDF, TXT, or Markdown file under 20 MB.`);
+      }
+      const reservation = await reserveFileMaterial(notebook.id, { name: file.name, size: file.size });
+      if (!reservation.ok) throw new Error(reservation.message);
+      try {
+        await uploadPrivateFile(file, reservation.data.path, reservation.data.mime);
+        const result = await completeFileMaterial(notebook.id, reservation.data.id);
+        if (!result.ok) throw new Error(result.message);
+        setMaterials((items) => [result.data, ...items]);
+        uploadedIds.push(result.data.id);
+      } catch (cause) {
+        const failed = await failFileMaterial(notebook.id, reservation.data.id);
+        if (failed.ok) setMaterials((items) => [failed.data, ...items]);
+        router.refresh();
+        throw cause;
+      }
+    }
+    router.refresh();
+    void indexMaterials(uploadedIds);
+  }
+
+  async function handleDelete(id: string) {
+    const result = await deleteMaterial(notebook.id, id);
+    if (!result.ok) throw new Error(result.message);
+    setMaterials((items) => items.filter((item) => item.id !== id));
+    router.refresh();
+  }
+
+  async function handleSend(submission: ChatSubmission, conversationId?: string) {
+    const result = await sendNotebookQuestion(notebook.id, submission.text, conversationId);
+    if (!result.ok) throw new Error(result.message);
+    const turn = result.data;
+    setConversations((items) => [
+      { id: turn.conversationId, title: turn.title, updatedLabel: "Just now", messages: [] },
+      ...items.filter((item) => item.id !== turn.conversationId),
+    ]);
+    router.refresh();
+    return turn;
+  }
+
+  async function handleSelectConversation(id: string) {
+    const result = await loadConversation(notebook.id, id);
+    if (!result.ok) throw new Error(result.message);
+    return result.messages;
+  }
 
   return (
     <StudyWorkspace
-      conversations={content?.conversations ?? []}
-      initialConversationId={content?.conversations[0]?.id}
       key={notebook.id}
-      materials={content?.materials ?? []}
-      messages={content?.conversations[0]?.messages ?? []}
       notebookTitle={notebook.title}
-      previews={content?.previews ?? {}}
-      quiz={content?.quiz ?? null}
-      viewer={previewViewer}
+      viewer={viewer}
+      materials={materials}
+      conversations={conversations}
+      messages={[]}
+      previews={{}}
+      quiz={null}
+      enableDemoChat={false}
+      onUpload={handleUpload}
+      onDeleteMaterial={handleDelete}
+      onIndexMaterial={indexMaterial}
+      onSend={handleSend}
+      onSelectConversation={handleSelectConversation}
     />
   );
 }

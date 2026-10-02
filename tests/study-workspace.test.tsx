@@ -46,3 +46,22 @@ describe("workspace account header", () => {
     expect(markup).toContain("Switch to dark mode");
   });
 });
+
+describe("global theme synchronization", () => {
+  test("ThemeToggle renders accessible toggle controls", async () => {
+    const { ThemeToggle } = await import("@/components/study/theme-toggle");
+    const markup = renderToStaticMarkup(<ThemeToggle />);
+
+    expect(markup).toContain("Switch to dark mode");
+  });
+
+  test("RootLayout source includes synchronous theme script and suppressHydrationWarning", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+
+    expect(layoutSource).toContain("studylens-theme");
+    expect(layoutSource).toContain("prefers-color-scheme");
+    expect(layoutSource).toContain("suppressHydrationWarning");
+  });
+});

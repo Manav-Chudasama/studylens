@@ -49,7 +49,7 @@ type MaterialUploadProps = {
   onUpload?: (request: MaterialUploadRequest) => Promise<void>;
 };
 
-/** Collects study material without pretending to persist it before the upload API exists. */
+/** Collects supported files or pasted notes for the current notebook. */
 export function MaterialUpload({ isOpen, onOpenChange, onUpload }: MaterialUploadProps) {
   const [kind, setKind] = useState<"files" | "note" | "video">("files");
   const [attachments, setAttachments] = useState<AttachmentMeta[]>([]);
@@ -85,9 +85,12 @@ export function MaterialUpload({ isOpen, onOpenChange, onUpload }: MaterialUploa
     try {
       setIsSubmitting(true);
       await onUpload(request);
+      setAttachments([]);
+      setNoteTitle("");
+      setNoteContent("");
       onOpenChange(false);
-    } catch {
-      setError("The material could not be added. Try again.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The material could not be added. Try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -98,13 +101,13 @@ export function MaterialUpload({ isOpen, onOpenChange, onUpload }: MaterialUploa
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add study material</DialogTitle>
-          <DialogDescription>Choose files, paste a note, or add a lecture URL.</DialogDescription>
+          <DialogDescription>Upload a PDF, TXT, or Markdown file, or paste a study note.</DialogDescription>
         </DialogHeader>
         <Tabs onValueChange={(value) => { setKind(value as typeof kind); setError(""); }} value={kind}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="files"><FileUp className="size-4" />Files</TabsTrigger>
             <TabsTrigger value="note"><NotebookPen className="size-4" />Note</TabsTrigger>
-            <TabsTrigger value="video"><Link2 className="size-4" />YouTube</TabsTrigger>
+            <TabsTrigger disabled value="video"><Link2 className="size-4" />YouTube</TabsTrigger>
           </TabsList>
 
           <TabsContent className="pt-4" value="files">

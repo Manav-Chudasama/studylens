@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createNotebook, deleteNotebook, updateNotebook } from "@/app/notebooks/actions";
 import {
   BookOpenText,
   BrainCircuit,
@@ -38,21 +39,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { previewViewer, sampleNotebookContent, sampleNotebooks } from "@/lib/notebook-fixtures";
-import type { StudyNotebook } from "@/lib/study-types";
-import { notebookDetailsSchema, useNotebookHydration, useNotebookStore } from "@/lib/use-notebook-store";
+import { notebookDetailsSchema } from "@/lib/notebook-schema";
+import type { StudyNotebook, StudyUser } from "@/lib/study-types";
 
 const notebookIcons = [BookOpenText, Database, BrainCircuit, CalendarDays];
 
-/** Notebook landing page for the future authenticated study space. */
-export function NotebookDashboard() {
+/** Notebook landing page for the authenticated study space. */
+export function NotebookDashboard({ initialNotebooks, viewer }: { initialNotebooks: StudyNotebook[]; viewer: StudyUser }) {
   const router = useRouter();
-  const createdNotebooks = useNotebookStore((state) => state.createdNotebooks);
-  const deletedNotebookIds = useNotebookStore((state) => state.deletedNotebookIds);
-  const createNotebook = useNotebookStore((state) => state.createNotebook);
-  const updateNotebook = useNotebookStore((state) => state.updateNotebook);
-  const deleteNotebook = useNotebookStore((state) => state.deleteNotebook);
-  const hasHydrated = useNotebookHydration();
+  const [notebooks, setNotebooks] = useState(initialNotebooks);
+  const [actionError, setActionError] = useState("");
 
   const [query, setQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -60,34 +56,34 @@ export function NotebookDashboard() {
   const [editingNotebook, setEditingNotebook] = useState<StudyNotebook | null>(null);
   const [deletingNotebook, setDeletingNotebook] = useState<StudyNotebook | null>(null);
 
-  const notebooks = [...createdNotebooks, ...sampleNotebooks]
-    .filter((nb) => !deletedNotebookIds.includes(nb.id))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
   const filteredNotebooks = notebooks.filter((notebook) =>
     `${notebook.title} ${notebook.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );
-  const featuredNotebooks = filteredNotebooks.filter((notebook) => {
-    const content = sampleNotebookContent[notebook.id];
-    return content && (content.materials.length > 0 || content.conversations.length > 0);
-  }).slice(0, 2);
+  const featuredNotebooks = filteredNotebooks.slice(0, 2);
 
-  function create(details: { title: string; description: string }) {
-    const id = createNotebook(details);
+  async function create(details: { title: string; description: string }) {
+    const result = await createNotebook(details);
+    if (!result.ok) throw new Error(result.message);
     setIsCreateOpen(false);
-    router.push(`/notebooks/${id}`);
+    router.push(`/notebooks/${result.id}`);
   }
 
-  function handleSaveEdit(details: { title: string; description: string }) {
+  async function handleSaveEdit(details: { title: string; description: string }) {
     if (!editingNotebook) return;
-    updateNotebook(editingNotebook.id, details);
+    const result = await updateNotebook(editingNotebook.id, details);
+    if (!result.ok) throw new Error(result.message);
+    setNotebooks((items) => items.map((item) => item.id === editingNotebook.id ? { ...item, ...details, updatedAt: new Date().toISOString() } : item));
     setEditingNotebook(null);
+    router.refresh();
   }
 
-  function handleConfirmDelete() {
+  async function handleConfirmDelete() {
     if (!deletingNotebook) return;
-    deleteNotebook(deletingNotebook.id);
+    const result = await deleteNotebook(deletingNotebook.id);
+    if (!result.ok) { setActionError(result.message); return; }
+    setNotebooks((items) => items.filter((item) => item.id !== deletingNotebook.id));
     setDeletingNotebook(null);
+    router.refresh();
   }
 
   return (
@@ -104,8 +100,8 @@ export function NotebookDashboard() {
               <Input aria-label="Search notebooks" className="h-9 pl-9" onChange={(event) => setQuery(event.target.value)} placeholder="Search notebooks" value={query} />
             </div>
             <ThemeToggle />
-            <Button aria-label={`Account for ${previewViewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
-              <Avatar size="sm"><AvatarFallback>S</AvatarFallback></Avatar>
+            <Button aria-label={`Account for ${viewer.displayName}`} onClick={() => setIsAccountOpen(true)} size="icon" variant="ghost">
+              <Avatar size="sm"><AvatarFallback>{viewer.displayName.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
             </Button>
           </div>
         </div>
@@ -118,7 +114,7 @@ export function NotebookDashboard() {
             <h1 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">Your notebooks</h1>
             <p className="max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">Keep each course and topic together, from source material to saved conversations.</p>
           </div>
-          <Button className="w-full sm:w-auto" disabled={!hasHydrated} onClick={() => setIsCreateOpen(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setIsCreateOpen(true)}>
             <Plus aria-hidden="true" className="size-4" /> New notebook
           </Button>
         </section>
@@ -141,8 +137,8 @@ export function NotebookDashboard() {
             {featuredNotebooks.length > 0 && <section className="space-y-5" aria-labelledby="continue-heading">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="font-heading text-xl font-semibold tracking-tight sm:text-2xl" id="continue-heading">Continue studying</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Pick up where you left off.</p>
+                <h2 className="font-heading text-xl font-semibold tracking-tight sm:text-2xl" id="continue-heading">Recent notebooks</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Your latest study spaces.</p>
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -179,7 +175,7 @@ export function NotebookDashboard() {
           </>
         )}
 
-        <p className="border-t border-border pt-5 text-xs text-muted-foreground">New notebook names are saved in this browser while account storage is being built.</p>
+        {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
       </main>
 
       <NewNotebookDialog isOpen={isCreateOpen} onCreate={create} onOpenChange={setIsCreateOpen} />
@@ -199,7 +195,7 @@ export function NotebookDashboard() {
           onOpenChange={(open) => !open && setDeletingNotebook(null)}
         />
       )}
-      <AccountDialog isOpen={isAccountOpen} onOpenChange={setIsAccountOpen} viewer={previewViewer} />
+      <AccountDialog isOpen={isAccountOpen} onOpenChange={setIsAccountOpen} viewer={viewer} />
     </div>
   );
 }
@@ -218,13 +214,10 @@ function NotebookCard({
   onDelete: () => void;
 }) {
   const Icon = notebookIcons[index % notebookIcons.length];
-  const content = sampleNotebookContent[notebook.id];
-  const materialCount = content?.materials.length ?? 0;
-  const chatCount = content?.conversations.length ?? 0;
   const updated = new Intl.DateTimeFormat("en", {
     day: "numeric",
     month: "short",
-    ...(content ? { timeZone: "UTC" } : {}),
+    timeZone: "UTC",
   }).format(new Date(notebook.updatedAt));
 
   return (
@@ -243,8 +236,8 @@ function NotebookCard({
             <h3 className="truncate font-heading text-lg font-semibold">{notebook.title}</h3>
             <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{notebook.description || "Your new study space"}</p>
             <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
-              <span>{materialCount} {materialCount === 1 ? "source" : "sources"}</span>
-              <span>{chatCount} {chatCount === 1 ? "chat" : "chats"}</span>
+              <span>{notebook.materialCount ?? 0} {(notebook.materialCount ?? 0) === 1 ? "source" : "sources"}</span>
+              <span>{notebook.chatCount ?? 0} {(notebook.chatCount ?? 0) === 1 ? "chat" : "chats"}</span>
               <span className="ml-auto">Updated {updated}</span>
             </div>
           </CardContent>
@@ -287,12 +280,13 @@ function NotebookCard({
   );
 }
 
-function NewNotebookDialog({ isOpen, onOpenChange, onCreate }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onCreate: (details: { title: string; description: string }) => void }) {
+function NewNotebookDialog({ isOpen, onOpenChange, onCreate }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onCreate: (details: { title: string; description: string }) => Promise<void> }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = notebookDetailsSchema.safeParse({ title, description });
     if (!result.success) {
@@ -300,9 +294,16 @@ function NewNotebookDialog({ isOpen, onOpenChange, onCreate }: { isOpen: boolean
       return;
     }
     setError("");
-    onCreate(result.data);
-    setTitle("");
-    setDescription("");
+    setIsSubmitting(true);
+    try {
+      await onCreate(result.data);
+      setTitle("");
+      setDescription("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not create notebook.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -324,7 +325,7 @@ function NewNotebookDialog({ isOpen, onOpenChange, onCreate }: { isOpen: boolean
           {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancel</Button>
-            <Button type="submit">Create notebook</Button>
+            <Button disabled={isSubmitting} type="submit">{isSubmitting ? "Creating..." : "Create notebook"}</Button>
           </div>
         </form>
       </DialogContent>
@@ -341,13 +342,14 @@ function EditNotebookDialog({
   isOpen: boolean;
   notebook: StudyNotebook;
   onOpenChange: (open: boolean) => void;
-  onSave: (details: { title: string; description: string }) => void;
+  onSave: (details: { title: string; description: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState(notebook.title);
   const [description, setDescription] = useState(notebook.description);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = notebookDetailsSchema.safeParse({ title, description });
     if (!result.success) {
@@ -355,7 +357,14 @@ function EditNotebookDialog({
       return;
     }
     setError("");
-    onSave(result.data);
+    setIsSubmitting(true);
+    try {
+      await onSave(result.data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not update notebook.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -377,7 +386,7 @@ function EditNotebookDialog({
           {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancel</Button>
-            <Button type="submit">Save changes</Button>
+            <Button disabled={isSubmitting} type="submit">{isSubmitting ? "Saving..." : "Save changes"}</Button>
           </div>
         </form>
       </DialogContent>
@@ -394,7 +403,7 @@ function DeleteNotebookDialog({
   isOpen: boolean;
   notebookTitle: string;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>;
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={isOpen}>

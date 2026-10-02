@@ -23,10 +23,11 @@ export type ChatSubmission = { text: string; files: File[] };
 type ChatComposerProps = {
   isBusy?: boolean;
   onSend?: (submission: ChatSubmission) => Promise<void>;
+  allowAttachments?: boolean;
 };
 
 /** Collects a question and optional files for the future chat endpoint. */
-export function ChatComposer({ isBusy = false, onSend }: ChatComposerProps) {
+export function ChatComposer({ isBusy = false, onSend, allowAttachments = true }: ChatComposerProps) {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<AttachmentMeta[]>([]);
   const [error, setError] = useState("");
@@ -40,8 +41,8 @@ export function ChatComposer({ isBusy = false, onSend }: ChatComposerProps) {
       await onSend({ text: value.trim(), files });
       setDraft("");
       setAttachments([]);
-    } catch {
-      setError("Your question could not be sent. Try again.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Your question could not be sent. Try again.");
     }
   }
 
@@ -83,7 +84,7 @@ export function ChatComposer({ isBusy = false, onSend }: ChatComposerProps) {
               </AttachmentList>
             )}
             <PromptInputActions>
-              <AttachmentTrigger asChild><Button aria-label="Attach material" size="icon" type="button" variant="ghost"><Paperclip /></Button></AttachmentTrigger>
+              {allowAttachments && <AttachmentTrigger asChild><Button aria-label="Attach material" size="icon" type="button" variant="ghost"><Paperclip /></Button></AttachmentTrigger>}
               <Button aria-label="Send message" disabled={!canSend} onClick={() => submit(draft)} size="icon" type="button"><ArrowUp /></Button>
             </PromptInputActions>
           </PromptInput>

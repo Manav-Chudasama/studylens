@@ -3,16 +3,19 @@
 import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, BookOpenText, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
 import authStudyIllustration from "@/public/auth-study-illustration.webp";
+import { requestPasswordReset, signIn, signUp } from "@/app/auth/actions";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ThemeToggle } from "@/components/study/theme-toggle";
 
 const emailSchema = z.email("Enter a valid email address.");
 const passwordSchema = z.string().min(8, "Use at least 8 characters.");
@@ -31,6 +34,7 @@ type AuthFormProps = {
 
 /** Reusable account screen for the planned Supabase email/password flow. */
 export function AuthForm({ mode, onSubmit }: AuthFormProps) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -49,11 +53,24 @@ export function AuthForm({ mode, onSubmit }: AuthFormProps) {
       if (!passwordResult.success) return setNotice(passwordResult.error.issues[0]?.message ?? "Check your password.");
       if (mode === "sign-up" && password !== confirmation) return setNotice("Passwords do not match.");
     }
-    if (!onSubmit) return setNotice("Account actions will be available when authentication is connected.");
-
     try {
       setIsSubmitting(true);
-      await onSubmit({ mode, email: emailResult.data, password: isReset ? undefined : password });
+      if (onSubmit) {
+        await onSubmit({ mode, email: emailResult.data, password: isReset ? undefined : password });
+        return;
+      }
+      const result = isReset
+        ? await requestPasswordReset(emailResult.data)
+        : mode === "sign-up"
+          ? await signUp({ email: emailResult.data, password })
+          : await signIn({ email: emailResult.data, password });
+      if (!result.ok) return setNotice(result.message);
+      const requestedPath = mode === "sign-in" ? new URLSearchParams(window.location.search).get("next") : null;
+      const safeRequestedPath = requestedPath?.startsWith("/") && !requestedPath.startsWith("//") && !requestedPath.startsWith("/\\")
+        ? requestedPath
+        : null;
+      router.push(safeRequestedPath ?? result.destination);
+      router.refresh();
     } catch {
       setNotice("The account request could not be completed. Try again.");
     } finally {
@@ -66,13 +83,17 @@ export function AuthForm({ mode, onSubmit }: AuthFormProps) {
     ? "Pick up where you left off with your study materials."
     : mode === "sign-up"
       ? "Keep your notes, documents, and source-linked answers together."
-      : "Enter your email and we’ll send a reset link when account services are connected.";
+      : "Enter your email and we’ll send a password reset link.";
 
   return (
     <main className="min-h-svh w-full bg-background lg:grid lg:grid-cols-2">
       <StudyPreview />
 
-      <section className="flex min-h-svh flex-col justify-between px-6 py-8 sm:px-10 sm:py-10 lg:px-14 lg:py-10 xl:px-20">
+      <section className="relative flex min-h-svh flex-col justify-between px-6 py-8 sm:px-10 sm:py-10 lg:px-14 lg:py-10 xl:px-20">
+        <div className="absolute right-6 top-6 sm:right-10 sm:top-8 z-10">
+          <ThemeToggle />
+        </div>
+
         <Link className="inline-flex w-fit items-center gap-2 font-heading text-lg font-semibold lg:hidden" href="/">
           <BookOpenText className="size-5" /> StudyLens
         </Link>
@@ -180,12 +201,13 @@ function StudyPreview() {
     <section aria-label="StudyLens illustration" className="relative hidden min-h-0 min-w-0 overflow-hidden border-r border-border bg-muted lg:block">
       <Image
         alt="Open study notes connected to their source pages"
-        className="object-cover object-center"
+        className="object-cover object-center dark:opacity-80 transition-opacity"
         fill
         priority
         sizes="(min-width: 1024px) 50vw, 100vw"
         src={authStudyIllustration}
       />
+      <div className="absolute inset-0 bg-background/0 dark:bg-background/40 transition-colors pointer-events-none" />
 
       <Link className="absolute top-8 left-8 z-10 inline-flex w-fit items-center gap-3 font-heading text-lg font-semibold lg:top-10 lg:left-10" href="/">
         <span className="flex size-9 items-center justify-center rounded-xl border border-border/80 bg-background/80 shadow-sm backdrop-blur-sm"><BookOpenText className="size-5" /></span>

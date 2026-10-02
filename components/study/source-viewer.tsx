@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { FileText, PanelRightClose, PlayCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -5,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Citation, Material, SourceLocation, SourcePreview } from "@/lib/study-types";
+import { createClient } from "@/lib/supabase/client";
 
 type SourceViewerProps = {
   material?: Material;
@@ -22,8 +26,43 @@ export function SourceViewer({
   showHeading = true,
   onCollapse,
 }: SourceViewerProps) {
+  const [storedText, setStoredText] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const storagePath = material?.storagePath;
+  const isPdf = material?.sourceKind === "pdf";
+
+  useEffect(() => {
+    if (!storagePath || material?.status !== "ready") return;
+    let isCancelled = false;
+    let createdUrl: string | undefined;
+    const load = async () => {
+      setStoredText(null);
+      setPdfUrl(null);
+      setLoadError("");
+      setIsLoading(true);
+      const { data, error } = await createClient().storage.from("study-materials").download(storagePath);
+      if (isCancelled) return;
+      if (error || !data) {
+        setLoadError("Could not load this private file.");
+      } else if (isPdf) {
+        createdUrl = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+        setPdfUrl(createdUrl);
+      } else {
+        setStoredText(await data.text());
+      }
+      if (!isCancelled) setIsLoading(false);
+    };
+    void load();
+    return () => {
+      isCancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [storagePath, isPdf, material?.status]);
+
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showHeading && (
         <div className="shrink-0 border-b border-border px-5 py-5">
           <div className="flex items-start justify-between gap-3">
@@ -48,30 +87,53 @@ export function SourceViewer({
           {citation && <Badge className="mt-3 max-w-full" variant="outline">{formatLocation(citation.location)}</Badge>}
         </div>
       )}
-      <ScrollArea className="min-h-0 flex-1 bg-muted/40 p-4 [&_[data-slot=scroll-area-viewport]]:overscroll-contain sm:p-5">
+      <ScrollArea className="min-h-0 flex-1 bg-muted/40 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <div className="p-4 sm:p-5">
         {!material && (
           <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
-            Select a material or citation to inspect its source.
+            {citation ? "This cited material has been removed from the notebook." : "Select a material or citation to inspect its source."}
           </div>
-        )}
-        {material?.status === "processing" && (
-          <Alert><AlertDescription>This material is still being processed.</AlertDescription></Alert>
-        )}
-        {material?.status === "failed" && (
-          <Alert variant="destructive"><AlertDescription>This material could not be processed.</AlertDescription></Alert>
-        )}
-        {material?.status === "ready" && preview && (
-          <div className="mx-auto max-w-lg border border-border bg-card px-6 py-8 shadow-sm sm:px-9 sm:py-10">
-            {material.type === "video" ? (
-              <VideoSource citation={citation} preview={preview} />
-            ) : (
-              <TextSource citation={citation} material={material} preview={preview} />
-            )}
-          </div>
-        )}
-        {material?.status === "ready" && !preview && (
-          <Alert><FileText className="size-4" /><AlertDescription>The source preview is unavailable.</AlertDescription></Alert>
-        )}
+          )}
+          {material?.status === "processing" && (
+            <Alert><AlertDescription>This material is still being processed.</AlertDescription></Alert>
+          )}
+          {material?.status === "failed" && (
+            <Alert variant="destructive"><AlertDescription>This material could not be processed.</AlertDescription></Alert>
+          )}
+          {material?.status === "ready" && preview && (
+            <div className="mx-auto max-w-lg border border-border bg-card px-6 py-8 shadow-sm sm:px-9 sm:py-10">
+              {material.type === "video" ? (
+                <VideoSource citation={citation} preview={preview} />
+              ) : (
+                <TextSource citation={citation} material={material} preview={preview} />
+              )}
+            </div>
+          )}
+        {material?.status === "ready" && !preview && material.sourceKind === "note" && (
+          <article className="mx-auto max-w-2xl rounded-lg border border-border bg-card p-6 sm:p-8">
+            <h3 className="mb-5 font-heading text-xl font-semibold">{material.title}</h3>
+            {citation && <div className="mb-5 rounded-md border border-border bg-muted p-3 text-sm leading-6"><p className="mb-1 text-xs font-medium text-muted-foreground">Cited passage</p>{citation.excerpt}</div>}
+            <p className="whitespace-pre-wrap wrap-break-word text-sm leading-7">{material.contentText}</p>
+          </article>
+          )}
+          {material?.status === "ready" && !preview && material.storagePath && (
+            <div className="mx-auto h-full min-h-80 max-w-4xl">
+              {isLoading && <p className="text-sm text-muted-foreground">Loading source…</p>}
+              {loadError && <Alert variant="destructive"><AlertDescription>{loadError}</AlertDescription></Alert>}
+            {citation && <div className="mb-4 rounded-md border border-border bg-card p-3 text-sm leading-6"><p className="mb-1 text-xs font-medium text-muted-foreground">Cited passage</p>{citation.excerpt}</div>}
+            {pdfUrl && <iframe className="h-full min-h-[70vh] w-full rounded-lg border border-border bg-card" src={`${pdfUrl}#page=${citation?.location.kind === "page" ? citation.location.page : 1}`} title={material.title} />}
+              {storedText !== null && (
+                <article className="rounded-lg border border-border bg-card p-6 sm:p-8">
+                <h3 className="mb-5 font-heading text-xl font-semibold">{material.title}</h3>
+                  <pre className="whitespace-pre-wrap wrap-break-word font-sans text-sm leading-7">{storedText}</pre>
+                </article>
+              )}
+            </div>
+          )}
+          {material?.status === "ready" && !preview && !material.storagePath && material.sourceKind !== "note" && (
+            <Alert><FileText className="size-4" /><AlertDescription>The source preview is unavailable.</AlertDescription></Alert>
+          )}
+        </div>
       </ScrollArea>
     </div>
   );

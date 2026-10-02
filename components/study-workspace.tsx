@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { BookOpenText, History, LogIn, Menu, PanelLeftOpen, PanelRightOpen, Plus, Share2, Sparkles } from "lucide-react";
 import { usePanelRef } from "react-resizable-panels";
@@ -20,6 +20,7 @@ import { MaterialUpload, type MaterialUploadRequest } from "@/components/study/m
 import { ShareExportDialog } from "@/components/study/share-export-dialog";
 import { SourceViewer } from "@/components/study/source-viewer";
 import { StudyStudioDialog } from "@/components/study/study-studio";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "@/components/study/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -44,8 +45,9 @@ import type {
   StudyConversation,
   StudyMessage,
   StudyUser,
+  SavedChatTurn,
 } from "@/lib/study-types";
-import { cn } from "@/lib/utils";
+
 
 type StudyWorkspaceProps = {
   notebookTitle?: string;
@@ -57,9 +59,12 @@ type StudyWorkspaceProps = {
   viewer?: StudyUser | null;
   conversations?: StudyConversation[];
   initialConversationId?: string;
-  onSelectConversation?: (id: string) => void;
+  onSelectConversation?: (id: string) => Promise<StudyMessage[]>;
   onUpload?: (request: MaterialUploadRequest) => Promise<void>;
-  onSend?: (submission: ChatSubmission) => Promise<void>;
+  onDeleteMaterial?: (id: string) => Promise<void>;
+  onIndexMaterial?: (id: string) => Promise<void>;
+  enableDemoChat?: boolean;
+  onSend?: (submission: ChatSubmission, conversationId?: string) => Promise<SavedChatTurn>;
   onRetry?: () => void;
   onConnectTelegram?: () => Promise<string>;
 };
@@ -77,11 +82,16 @@ export function StudyWorkspace({
   initialConversationId,
   onSelectConversation,
   onUpload,
+  onDeleteMaterial,
+  onIndexMaterial,
+  enableDemoChat = true,
   onSend,
   onRetry,
   onConnectTelegram,
 }: StudyWorkspaceProps) {
-  const [activeMaterials, setActiveMaterials] = useState<Material[]>(materials);
+  const [localMaterials, setLocalMaterials] = useState<Material[]>(materials);
+  const activeMaterials = onDeleteMaterial ? materials : localMaterials;
+  const [materialError, setMaterialError] = useState("");
   const [selectedId, setSelectedId] = useState<string | undefined>(materials[0]?.id);
   const [selectedCitation, setSelectedCitation] = useState<Citation | undefined>();
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -102,23 +112,41 @@ export function StudyWorkspace({
   const [chatMessages, setChatMessages] = useState<StudyMessage[]>(visibleMessages);
   const [activeChatState, setActiveChatState] = useState<ChatState>(chatState);
 
-  function selectConversation(id: string) {
+  async function selectConversation(id: string) {
     if (!viewer) return;
     const conversation = conversations.find((item) => item.id === id);
     if (!conversation) return;
-    setSelectedConversationId(id);
-    setChatMessages(conversation.messages);
-    setSelectedId(conversation.messages.flatMap((message) => message.citations)[0]?.materialId);
+    setActiveChatState("searching");
+    try {
+      const loadedMessages = onSelectConversation ? await onSelectConversation(id) : conversation.messages;
+      setSelectedConversationId(id);
+      setChatMessages(loadedMessages);
+      setSelectedId(loadedMessages.flatMap((message) => message.citations)[0]?.materialId);
+      setActiveChatState("idle");
+    } catch (cause) {
+      setActiveChatState("error");
+      setMaterialError(cause instanceof Error ? cause.message : "Could not open the conversation.");
+      return;
+    }
     setSelectedCitation(undefined);
     setIsSourceOpen(false);
     setShowQuiz(false);
     setIsHistoryOpen(false);
-    onSelectConversation?.(id);
   }
 
   async function handleSend(submission: ChatSubmission) {
     if (onSend) {
-      await onSend(submission);
+      if (submission.files.length) throw new Error("Upload files through the Library before asking about them.");
+      setActiveChatState("searching");
+      try {
+        const turn = await onSend(submission, selectedConversationId);
+        setSelectedConversationId(turn.conversationId);
+        setChatMessages((previous) => [...previous, turn.userMessage, turn.assistantMessage]);
+        setActiveChatState("idle");
+      } catch (cause) {
+        setActiveChatState("error");
+        throw cause;
+      }
       return;
     }
 
@@ -271,8 +299,18 @@ export function StudyWorkspace({
     setChatMessages((prev) => [...prev, studioMessage]);
   }
 
-  function handleDeleteMaterial(id: string) {
-    setActiveMaterials((prev) => prev.filter((m) => m.id !== id));
+  async function handleDeleteMaterial(id: string) {
+    setMaterialError("");
+    if (onDeleteMaterial) {
+      try {
+        await onDeleteMaterial(id);
+      } catch (cause) {
+        setMaterialError(cause instanceof Error ? cause.message : "Could not remove the material.");
+        return;
+      }
+    } else {
+      setLocalMaterials((prev) => prev.filter((m) => m.id !== id));
+    }
     if (selectedId === id) {
       setSelectedId(undefined);
       setSelectedCitation(undefined);
@@ -303,6 +341,7 @@ export function StudyWorkspace({
   const libraryProps = {
     materials: activeMaterials,
     onDelete: handleDeleteMaterial,
+    onIndex: onIndexMaterial,
     onSelect: openMaterial,
     onUploadClick: () => { setIsLibraryOpen(false); setIsUploadOpen(true); },
     selectedId,
@@ -346,7 +385,7 @@ export function StudyWorkspace({
             <Plus className="size-3.5" />
             <span className="hidden sm:inline">New chat</span>
           </Button>
-          <Button
+          {enableDemoChat && <Button
             aria-label="Study studio"
             className="gap-1.5"
             onClick={() => setIsStudioOpen(true)}
@@ -356,7 +395,7 @@ export function StudyWorkspace({
           >
             <Sparkles className="size-3.5" />
             <span className="hidden md:inline">Studio</span>
-          </Button>
+          </Button>}
           <Button
             aria-label="Share notebook"
             className="gap-1.5"
@@ -399,6 +438,7 @@ export function StudyWorkspace({
       </header>
 
       <main className="min-h-0 min-w-0 w-full flex-1 overflow-hidden">
+        {materialError && <Alert className="absolute left-1/2 top-16 z-50 w-auto max-w-[90vw] -translate-x-1/2 bg-background" variant="destructive"><AlertDescription>{materialError}</AlertDescription></Alert>}
         {/* Desktop Draggable & Adjustable Layout */}
         <div className="relative hidden h-full w-full lg:flex">
           {/* Actionable button to pop back Library when collapsed (below header, top left) */}
@@ -435,7 +475,7 @@ export function StudyWorkspace({
             </div>
           )}
 
-          <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+          <ResizablePanelGroup orientation="horizontal" className="h-full w-full overflow-hidden">
             <ResizablePanel
               panelRef={libraryPanelRef}
               id="library-panel"
@@ -446,7 +486,7 @@ export function StudyWorkspace({
               onResize={(size) => {
                 setIsLibraryExpanded(size.asPercentage > 0);
               }}
-              className="min-h-0 min-w-0 overflow-hidden"
+              className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
             >
               <MaterialLibrary {...libraryProps} onCollapse={collapseLibrary} />
             </ResizablePanel>
@@ -463,12 +503,12 @@ export function StudyWorkspace({
                 key={selectedConversationId ?? "current"}
                 messages={chatMessages}
                 onOpenCitation={openCitation}
-                onRegenerate={handleRegenerate}
+                onRegenerate={enableDemoChat ? handleRegenerate : undefined}
                 onRetry={onRetry ?? (() => setActiveChatState("idle"))}
                 quiz={showQuiz ? quiz ?? undefined : undefined}
                 state={activeChatState}
               />
-              <ChatComposer isBusy={activeChatState === "searching" || activeChatState === "streaming"} onSend={handleSend} />
+              <ChatComposer allowAttachments={enableDemoChat} isBusy={activeChatState === "searching" || activeChatState === "streaming"} onSend={enableDemoChat || onSend ? handleSend : undefined} />
             </ResizablePanel>
 
             <ResizableHandle withHandle />
@@ -483,7 +523,7 @@ export function StudyWorkspace({
               onResize={(size) => {
                 setIsSourceExpanded(size.asPercentage > 0);
               }}
-              className="min-h-0 min-w-0 overflow-hidden"
+              className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
             >
               <SourceViewer {...sourceProps} onCollapse={collapseSource} />
             </ResizablePanel>
@@ -496,12 +536,12 @@ export function StudyWorkspace({
             key={selectedConversationId ?? "current"}
             messages={chatMessages}
             onOpenCitation={openCitation}
-            onRegenerate={handleRegenerate}
+            onRegenerate={enableDemoChat ? handleRegenerate : undefined}
             onRetry={onRetry ?? (() => setActiveChatState("idle"))}
             quiz={showQuiz ? quiz ?? undefined : undefined}
             state={activeChatState}
           />
-          <ChatComposer isBusy={activeChatState === "searching" || activeChatState === "streaming"} onSend={handleSend} />
+          <ChatComposer allowAttachments={enableDemoChat} isBusy={activeChatState === "searching" || activeChatState === "streaming"} onSend={enableDemoChat || onSend ? handleSend : undefined} />
         </div>
       </main>
 
@@ -530,13 +570,13 @@ export function StudyWorkspace({
         onSelect={selectConversation}
         selectedId={selectedConversationId}
       />
-      <StudyStudioDialog
+      {enableDemoChat && <StudyStudioDialog
         isOpen={isStudioOpen}
         materialCount={activeMaterials.length}
         notebookTitle={notebookTitle}
         onGenerateContent={handleStudioGenerate}
         onOpenChange={setIsStudioOpen}
-      />
+      />}
       <ShareExportDialog
         isOpen={isShareOpen}
         messages={chatMessages}

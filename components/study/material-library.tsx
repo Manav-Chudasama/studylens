@@ -21,6 +21,7 @@ type MaterialLibraryProps = {
   onUploadClick: () => void;
   onCollapse?: () => void;
   onDelete?: (id: string) => void;
+  onIndex?: (id: string) => void;
 };
 
 /** Browse the current student's materials and open the upload flow. */
@@ -31,6 +32,7 @@ export function MaterialLibrary({
   onUploadClick,
   onCollapse,
   onDelete,
+  onIndex,
 }: MaterialLibraryProps) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -41,7 +43,7 @@ export function MaterialLibrary({
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
       <div className="mb-5 flex items-center justify-between">
         <h2 className="font-heading text-lg font-semibold">Library</h2>
         {onCollapse ? (
@@ -93,6 +95,7 @@ export function MaterialLibrary({
                 key={material.id}
                 material={material}
                 onDelete={onDelete}
+                onIndex={onIndex}
                 onSelect={onSelect}
               />
             ))}
@@ -118,11 +121,13 @@ function MaterialRow({
   material,
   onSelect,
   onDelete,
+  onIndex,
 }: {
   isSelected: boolean;
   material: Material;
   onSelect: (id: string) => void;
   onDelete?: (id: string) => void;
+  onIndex?: (id: string) => void;
 }) {
   const Icon = material.type === "video" ? PlayCircle : FileText;
 
@@ -149,12 +154,27 @@ function MaterialRow({
         <span className="block truncate text-sm font-medium">{material.title}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{material.detail}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{material.addedLabel}</span>
+        {material.status === "ready" && material.indexStatus && material.indexStatus !== "ready" && (
+          <span className="mt-2 block text-xs text-muted-foreground">
+            {material.indexStatus === "indexing" ? "Preparing for chat…" : material.indexError ?? "Not searchable yet"}
+          </span>
+        )}
+        {onIndex && material.status === "ready" && (material.indexStatus === "pending" || material.indexStatus === "failed") && (
+          <Button
+            className="mt-2 h-7 px-2 text-xs"
+            onClick={(event) => { event.stopPropagation(); onIndex(material.id); }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >{material.indexStatus === "failed" ? "Retry indexing" : "Index for chat"}</Button>
+        )}
       </span>
       {material.status !== "ready" && (
         <Badge variant={material.status === "failed" ? "destructive" : "secondary"}>
           {material.status === "failed" ? "Failed" : "Processing"}
         </Badge>
       )}
+      {material.status === "ready" && material.indexStatus === "failed" && <Badge variant="destructive">Index failed</Badge>}
 
       {onDelete && (
         <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">

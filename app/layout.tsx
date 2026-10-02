@@ -17,13 +17,29 @@ export const metadata: Metadata = {
   description: "A study workspace for grounded answers from your own materials.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+const themeScript = `
+  try {
+    var stored = localStorage.getItem('studylens-theme');
+    var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  } catch (e) {}
+`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="h-full min-h-full flex flex-col">{children}</body>
     </html>
   );
 }
