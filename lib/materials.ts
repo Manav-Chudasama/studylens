@@ -16,13 +16,20 @@ export type MaterialRow = {
 };
 
 export function toMaterial(row: MaterialRow): Material {
-  const detail = row.kind === "note" ? "Pasted note" : `${row.kind.toUpperCase()} · ${formatBytes(row.byte_size ?? 0)}`;
+  const isVideo = row.title === "YouTube Video" || (row.content_text && row.content_text.includes("youtu"));
+  const detail = isVideo ? "YouTube" : (row.kind === "note" ? "Pasted note" : `${row.kind.toUpperCase()} · ${formatBytes(row.byte_size ?? 0)}`);
+  
+  let videoUrl = row.content_text;
+  if (isVideo && row.content_text) {
+    videoUrl = row.content_text.split('\n')[0].trim();
+  }
+
   return {
     id: row.id,
     title: row.title,
-    type: row.kind === "pdf" ? "pdf" : "note",
+    type: isVideo ? "video" : (row.kind === "pdf" ? "pdf" : "note"),
     sourceKind: row.kind,
-    storagePath: row.storage_path ?? undefined,
+    storagePath: isVideo ? videoUrl ?? undefined : row.storage_path ?? undefined,
     contentText: row.content_text ?? undefined,
     detail,
     addedLabel: new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(row.created_at)),

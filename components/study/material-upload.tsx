@@ -107,7 +107,7 @@ export function MaterialUpload({ isOpen, onOpenChange, onUpload }: MaterialUploa
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="files"><FileUp className="size-4" />Files</TabsTrigger>
             <TabsTrigger value="note"><NotebookPen className="size-4" />Note</TabsTrigger>
-            <TabsTrigger disabled value="video"><Link2 className="size-4" />YouTube</TabsTrigger>
+            <TabsTrigger value="video"><Link2 className="size-4" />YouTube</TabsTrigger>
           </TabsList>
 
           <TabsContent className="pt-4" value="files">
