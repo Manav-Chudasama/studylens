@@ -50,6 +50,7 @@ import type {
 
 
 type StudyWorkspaceProps = {
+  notebookId?: string;
   notebookTitle?: string;
   materials?: Material[];
   messages?: StudyMessage[];
@@ -71,6 +72,7 @@ type StudyWorkspaceProps = {
 
 /** Composes the study UI around typed data and optional future backend actions. */
 export function StudyWorkspace({
+  notebookId,
   notebookTitle,
   materials = sampleMaterials,
   messages = sampleMessages,
@@ -570,13 +572,14 @@ export function StudyWorkspace({
         onSelect={selectConversation}
         selectedId={selectedConversationId}
       />
-      {enableDemoChat && <StudyStudioDialog
+      <StudyStudioDialog
         isOpen={isStudioOpen}
+        notebookId={notebookId}
         materialCount={activeMaterials.length}
         notebookTitle={notebookTitle}
         onGenerateContent={handleStudioGenerate}
         onOpenChange={setIsStudioOpen}
-      />}
+      />
       <ShareExportDialog
         isOpen={isShareOpen}
         messages={chatMessages}
