@@ -1,4 +1,5 @@
 import type { MaterialRow } from "@/lib/materials";
+import { extractYouTubeVideoId, fetchYouTubeTranscript } from "@/lib/youtube-transcript";
 
 export type SourcePage = { pageNumber: number | null; text: string };
 export type SourceChunk = { chunkIndex: number; pageNumber: number | null; content: string };
@@ -12,7 +13,21 @@ export class IndexingError extends Error {}
 
 /** Extract text while retaining PDF page boundaries for citations. */
 export async function extractSourcePages(material: MaterialRow, file?: Blob): Promise<SourcePage[]> {
-  if (material.kind === "note") return [{ pageNumber: null, text: material.content_text ?? "" }];
+  if (material.kind === "note") {
+    let text = material.content_text ?? "";
+    const isVideo = /(?:youtube\.com|youtu\.be)/i.test(text);
+    if (isVideo) {
+      const videoId = extractYouTubeVideoId(text);
+      const hasTranscript = text.split("\n\n").length > 1 && text.length > 200;
+      if (videoId && !hasTranscript) {
+        const transcript = await fetchYouTubeTranscript(videoId);
+        if (transcript) {
+          text = `${text.trim()}\n\n${transcript}`;
+        }
+      }
+    }
+    return [{ pageNumber: null, text }];
+  }
   if (!file) throw new IndexingError("The stored file is missing.");
   if (material.kind === "txt" || material.kind === "md") {
     try {

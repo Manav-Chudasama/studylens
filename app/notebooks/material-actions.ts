@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getJson } from "serpapi";
+import { extractYouTubeVideoId, fetchYouTubeTitle, fetchYouTubeTranscript } from "@/lib/youtube-transcript";
 
 import { requireUser } from "@/lib/auth";
 import { fileKind, fileMaterialSchema, fileMime, noteMaterialSchema } from "@/lib/material-schema";
@@ -43,48 +43,35 @@ export async function createNoteMaterial(notebookId: string, input: unknown): Pr
   return { ok: true, data: toMaterial(data as MaterialRow) };
 }
 
+
 /** Persist a video URL after verifying the notebook owner. */
 export async function createVideoMaterial(notebookId: string, url: string): Promise<ActionResult<Material>> {
   const context = await ownedNotebook(notebookId);
   if (!context) return { ok: false, message: "Notebook not found." };
-  let title = "YouTube Video";
+  
+  const videoId = extractYouTubeVideoId(url);
+  const fetchedTitle = await fetchYouTubeTitle(url);
+  const title = fetchedTitle || "YouTube Video";
+  
   let transcriptText = "";
-  try {
-    const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-    if (oembedRes.ok) {
-      const oembedData = await oembedRes.json();
-      if (oembedData.title) title = oembedData.title;
-    }
-
-    const videoIdMatch = url.match(/(?:v=|youtu\.be\/)([^&?]+)/);
-    const videoId = videoIdMatch ? videoIdMatch[1] : null;
-    const apiKey = process.env.SERP_API_KEY;
-    if (videoId && apiKey) {
-      const data: any = await new Promise((resolve, reject) => {
-        getJson({
-          engine: "youtube_video_transcript",
-          v: videoId,
-          type: "asr",
-          api_key: apiKey
-        }, (json) => {
-          if (json.error) reject(new Error(json.error));
-          else resolve(json);
-        });
-      });
-      if (data.transcript) {
-        transcriptText = data.transcript.map((t: any) => t.text).join(" ");
-      }
-    }
-  } catch (err) {
-    console.error("Failed to fetch video details:", err);
+  if (videoId) {
+    transcriptText = await fetchYouTubeTranscript(videoId);
   }
 
   const fullContentText = transcriptText ? `${url}\n\n${transcriptText}` : url;
 
   const { data, error } = await context.supabase.from("materials")
-    .insert({ notebook_id: notebookId, owner_id: context.userId, kind: "note", title,
-      content_text: fullContentText, status: "ready" })
-    .select("id,title,kind,original_filename,storage_path,byte_size,content_text,status,index_status,index_error,created_at").single();
+    .insert({
+      notebook_id: notebookId,
+      owner_id: context.userId,
+      kind: "note",
+      title,
+      content_text: fullContentText,
+      status: "ready",
+    })
+    .select("id,title,kind,original_filename,storage_path,byte_size,content_text,status,index_status,index_error,created_at")
+    .single();
+
   if (error || !data) return { ok: false, message: "Could not save the video." };
   await context.supabase.from("notebooks").update({ updated_at: new Date().toISOString() })
     .eq("id", notebookId).eq("owner_id", context.userId);

@@ -9,6 +9,7 @@ import { toMessage } from "@/lib/chat-data";
 import { finalizeGroundedAnswer, type RetrievedPassage } from "@/lib/grounded-answer";
 import { notebookIdSchema } from "@/lib/notebook-schema";
 import type { StudyMessage } from "@/lib/study-types";
+import { extractYouTubeVideoId, fetchYouTubeTranscript } from "@/lib/youtube-transcript";
 
 const questionSchema = z.string().trim().min(1, "Enter a question.").max(2000, "Keep questions under 2,000 characters.");
 
@@ -208,6 +209,14 @@ export async function sendNotebookQuestion(notebookId: string, questionInput: un
     }
   }
 
+  const isVideoQuery = /\b(video|transcript|lecture|youtube|captions)\b/i.test(cleanQuestion);
+  if (!targetedMaterial && isVideoQuery) {
+    const videoMat = readyMaterials.find((m) =>
+      m.kind === "note" || m.title.toLowerCase().includes("video") || m.title.toLowerCase().includes("python")
+    );
+    if (videoMat) targetedMaterial = videoMat;
+  }
+
   if (targetedMaterial && chunks.length === 0) {
     const { data: targetChunks } = await supabase.from("material_chunks")
       .select("id, material_id, chunk_index, page_number, content")
@@ -216,14 +225,44 @@ export async function sendNotebookQuestion(notebookId: string, questionInput: un
       .eq("material_id", targetedMaterial.id)
       .order("chunk_index", { ascending: true })
       .limit(10);
-    chunks = (targetChunks ?? []).map((c) => ({
-      chunk_id: c.id,
-      material_id: c.material_id,
-      material_title: targetedMaterial!.title,
-      page_number: c.page_number,
-      content: c.content,
-      similarity: 1.0,
-    }));
+
+    if (targetChunks && targetChunks.length > 0) {
+      chunks = targetChunks.map((c) => ({
+        chunk_id: c.id,
+        material_id: c.material_id,
+        material_title: targetedMaterial!.title,
+        page_number: c.page_number,
+        content: c.content,
+        similarity: 1.0,
+      }));
+    } else {
+      // If chunks aren't in database yet, extract from content_text directly
+      const { data: fullMat } = await supabase.from("materials").select("content_text")
+        .eq("id", targetedMaterial.id).eq("owner_id", userId).maybeSingle();
+      let text = fullMat?.content_text ?? "";
+      const isYt = /(?:youtube\.com|youtu\.be)/i.test(text);
+      if (isYt && (!text.includes("\n\n") || text.length < 200)) {
+        const vid = extractYouTubeVideoId(text);
+        if (vid) {
+          const fetched = await fetchYouTubeTranscript(vid);
+          if (fetched) {
+            text = `${text.trim()}\n\n${fetched}`;
+            void supabase.from("materials").update({ content_text: text }).eq("id", targetedMaterial.id);
+          }
+        }
+      }
+      if (text) {
+        const passageText = text.replace(/^https?:\/\/[^\s]+\s*/, "").slice(0, 5000);
+        chunks = [{
+          chunk_id: crypto.randomUUID(),
+          material_id: targetedMaterial.id,
+          material_title: targetedMaterial.title,
+          page_number: null,
+          content: passageText || text,
+          similarity: 1.0,
+        }];
+      }
+    }
   }
 
   // 6. Standard Vector Search

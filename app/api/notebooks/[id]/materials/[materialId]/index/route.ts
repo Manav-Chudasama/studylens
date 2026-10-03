@@ -45,6 +45,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       file = data;
     }
     const pages = await extractSourcePages(material as MaterialRow, file);
+    if (material.kind === "note" && pages[0]?.text && pages[0].text !== material.content_text) {
+      await supabase.from("materials").update({ content_text: pages[0].text }).eq("id", materialId);
+    }
     const chunks = chunkSourcePages(pages);
     const { error: clearError } = await supabase.from("material_chunks").delete()
       .eq("material_id", materialId).eq("notebook_id", notebookId).eq("owner_id", userId);
