@@ -33,7 +33,11 @@
    - YouTube stays disabled until transcript support exists. Signed-in notebook chat and studio sample responses are disabled until retrieval can produce grounded answers.
    - Static verification: TypeScript and ESLint passed. Per user request, the upload feature was not exercised; manual test steps are provided separately.
    - Still planned: PDF text extraction, OCR, embeddings, vector search, and source-linked retrieval.
-5. **Grounded chat and citations — planned:** evidence checks, Gemini answers, OpenAI fallback, and source-linked responses.
+5. **Grounded chat and citations — complete:**
+   - Text extraction for PDFs with in-memory `pdfjs-dist` legacy worker, and plain text/note ingestion.
+   - Vector embeddings using Google Gemini's `gemini-embedding-001` (1536-dimensional) stored in PostgreSQL with `pgvector` HNSW cosine indexing.
+   - Grounded RAG answer generation with Google Gemini (`gemini-3.8-flash`) enforcing strict JSON schema and verified source citations.
+   - Conversational intelligence: library catalog awareness, meta-query handling ("what docs do u see?"), multi-document summary synthesis ("Summarize my materials"), contextual greetings, and intelligent fallback synthesis.
 6. **Study tools and channels — planned:** YouTube transcripts, source-backed quizzes, and on-demand Telegram integration.
 
 Use Bun for local development and verification. Follow the installed Next.js 16 documentation before changing framework behavior. Do not run a production build unless requested.
