@@ -73,11 +73,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     revalidatePath(`/notebooks/${notebookId}`);
     return Response.json({ material: toMaterial(ready as MaterialRow), chunkCount: chunks.length });
   } catch (cause) {
-    const message = cause instanceof IndexingError ? cause.message : "Indexing failed. Retry this material.";
-    console.error("Material indexing failed", { materialId, cause });
+    const message = cause instanceof Error ? cause.message : "Indexing failed. Retry this material.";
+    console.error("Material indexing failed:", cause);
     await supabase.from("materials").update({ index_status: "failed", index_error: message })
       .eq("id", materialId).eq("notebook_id", notebookId).eq("owner_id", userId);
     revalidatePath(`/notebooks/${notebookId}`);
-    return Response.json({ message }, { status: cause instanceof IndexingError ? 422 : 500 });
+    return Response.json({ message }, { status: 500 });
   }
 }
