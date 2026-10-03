@@ -7,6 +7,7 @@ import { toMaterial, type MaterialRow } from "@/lib/materials";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /** Extract, embed, and store source passages for one owned material. */

@@ -23,8 +23,15 @@ export async function extractSourcePages(material: MaterialRow, file?: Blob): Pr
     }
   }
 
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+  const [pdfjs, pdfWorker] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    // @ts-expect-error pdfjs-dist does not bundle type definitions for legacy worker entrypoint
+    import("pdfjs-dist/legacy/build/pdf.worker.mjs").catch(() => null),
+  ]);
+  if (pdfWorker) {
+    (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfWorker;
+  }
+  if (!pdfjs.GlobalWorkerOptions.workerSrc || pdfjs.GlobalWorkerOptions.workerSrc === "./pdf.worker.mjs") {
     try {
       pdfjs.GlobalWorkerOptions.workerSrc = import.meta.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
     } catch {

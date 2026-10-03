@@ -38,6 +38,8 @@ async function saveAndReturnTurn(
     savedConversationId = data.id;
     isNewConversation = true;
   }
+  if (!savedConversationId) return { ok: false, message: "Could not save the conversation." };
+  const conversationIdValue: string = savedConversationId;
   const now = Date.now();
   const userMessage: StudyMessage = { id: crypto.randomUUID(), role: "user", content: question, citations: [] };
   const assistantMessage: StudyMessage = {
@@ -76,7 +78,7 @@ async function saveAndReturnTurn(
   await supabase.from("conversations").update({ updated_at: new Date().toISOString() })
     .eq("id", savedConversationId).eq("notebook_id", notebookId).eq("owner_id", userId);
   revalidatePath(`/notebooks/${notebookId}`);
-  return { ok: true, data: { conversationId: savedConversationId, title, userMessage, assistantMessage } };
+  return { ok: true, data: { conversationId: conversationIdValue, title, userMessage, assistantMessage } };
 }
 
 /** Load one owned conversation when selected from history. */
