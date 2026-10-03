@@ -13,7 +13,6 @@ import {
   Play,
   RotateCcw,
   Sparkles,
-  Volume2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -84,13 +83,14 @@ export function StudyStudioDialog({
 
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // Stop speech when dialog closes or component unmounts
+  // Stop speech when component unmounts
   useEffect(() => {
-    if (!isOpen && typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      setIsPlayingAudio(false);
-    }
-  }, [isOpen]);
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   function speakLine(index: number) {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -259,8 +259,18 @@ export function StudyStudioDialog({
     ? Math.round(((currentLineIndex + (isPlayingAudio ? 0.5 : 0)) / podcastScript.dialogue.length) * 100)
     : 0;
 
+  function handleOpenChange(open: boolean) {
+    if (!open) {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setIsPlayingAudio(false);
+    }
+    onOpenChange(open);
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl sm:p-6">
         <DialogHeader>
           <div className="flex items-center gap-2">

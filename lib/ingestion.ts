@@ -23,8 +23,21 @@ export async function extractSourcePages(material: MaterialRow, file?: Blob): Pr
     }
   }
 
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const task = getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    try {
+      pdfjs.GlobalWorkerOptions.workerSrc = import.meta.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    } catch {
+      try {
+        const path = await import("node:path");
+        const { pathToFileURL } = await import("node:url");
+        pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(
+          path.resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs")
+        ).href;
+      } catch {}
+    }
+  }
+  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
   try {
     const document = await task.promise;
     if (document.numPages > MAX_PDF_PAGES) {

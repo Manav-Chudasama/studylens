@@ -11,6 +11,40 @@ function openAI() {
   return new OpenAI({ apiKey, timeout: 60_000, maxRetries: 2 });
 }
 
+async function callGemini(endpoint: string, payload: unknown, timeoutMs = 60_000): Promise<Record<string, unknown> | null> {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) return null;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${endpoint}?key=${geminiKey}`;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.ok) {
+        return (await response.json()) as Record<string, unknown>;
+      }
+      if (response.status === 429 || response.status === 503) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      const errText = await response.text();
+      console.warn(`Gemini call to ${endpoint} returned ${response.status}: ${errText}`);
+      break;
+    } catch (err) {
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+      } else {
+        console.warn(`Gemini call to ${endpoint} failed:`, err);
+      }
+    }
+  }
+  return null;
+}
+
 /** Embed a bounded batch using the same 1536-dimensional model for sources and queries. */
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   if (texts.length === 0 || texts.length > 32) throw new Error("Embedding batch must contain 1–32 passages.");
@@ -30,27 +64,16 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   }
 
   // Fallback to Gemini embeddings
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-      body: JSON.stringify({
-        requests: texts.map((text) => ({
-          model: "models/gemini-embedding-001",
-          content: { parts: [{ text }] },
-          outputDimensionality: 1536,
-        })),
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
+  const geminiBody = await callGemini("gemini-embedding-001:batchEmbedContents", {
+    requests: texts.map((text) => ({
+      model: "models/gemini-embedding-001",
+      content: { parts: [{ text }] },
+      outputDimensionality: 1536,
+    })),
+  });
 
-    if (response.ok) {
-      const body = await response.json();
-      if (Array.isArray(body.embeddings) && body.embeddings.length === texts.length) {
-        return body.embeddings.map((item: { values: number[] }) => item.values);
-      }
-    }
+  if (geminiBody && Array.isArray(geminiBody.embeddings) && geminiBody.embeddings.length === texts.length) {
+    return (geminiBody.embeddings as Array<{ values: number[] }>).map((item) => item.values);
   }
 
   throw new Error("Either OPENAI_API_KEY or GEMINI_API_KEY is required for embedding generation.");
@@ -78,25 +101,19 @@ const systemInstruction = `You are StudyLens, a study assistant. Answer ONLY fro
 
 /** Generate structured claims with Gemini, falling back to OpenAI when configured. */
 export async function generateGroundedAnswer(prompt: string): Promise<GroundedAnswer> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
+  const geminiBody = await callGemini("gemini-3.8-flash:generateContent", {
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: "application/json", responseJsonSchema: answerJsonSchema, temperature: 0.1 },
+  });
+
+  if (geminiBody) {
     try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json", responseJsonSchema: answerJsonSchema, temperature: 0.1 },
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (!response.ok) throw new Error(`Gemini returned ${response.status}.`);
-      const body = await response.json();
-      const text = body.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("");
-      return groundedAnswerSchema.parse(JSON.parse(text));
-    } catch (error) {
-      console.warn("Gemini answer failed; trying OpenAI fallback.", error);
+      const candidates = geminiBody.candidates as Array<{ content?: { parts?: Array<{ text?: string }> } }> | undefined;
+      const text = candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("");
+      if (text) return groundedAnswerSchema.parse(JSON.parse(text));
+    } catch (parseError) {
+      console.warn("Failed to parse Gemini grounded answer:", parseError);
     }
   }
 
@@ -117,26 +134,19 @@ export async function generateStructuredCompletion<T>(
   schema: Record<string, unknown>,
   schemaParser: z.ZodType<T>,
 ): Promise<T> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
+  const geminiBody = await callGemini("gemini-3.8-flash:generateContent", {
+    systemInstruction: { parts: [{ text: instruction }] },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0.2 },
+  }, 90_000);
+
+  if (geminiBody) {
     try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: instruction }] },
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0.2 },
-        }),
-        signal: AbortSignal.timeout(90_000),
-      });
-      if (response.ok) {
-        const body = await response.json();
-        const text = body.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("");
-        return schemaParser.parse(JSON.parse(text));
-      }
-    } catch (error) {
-      console.warn("Gemini structured completion failed; trying OpenAI fallback.", error);
+      const candidates = geminiBody.candidates as Array<{ content?: { parts?: Array<{ text?: string }> } }> | undefined;
+      const text = candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("");
+      if (text) return schemaParser.parse(JSON.parse(text));
+    } catch (parseError) {
+      console.warn("Failed to parse Gemini structured completion:", parseError);
     }
   }
 
@@ -152,27 +162,16 @@ export async function generateStructuredCompletion<T>(
 
 /** Generate freeform markdown text from source context using Gemini & OpenAI fallback */
 export async function generateTextCompletion(instruction: string, prompt: string): Promise<string> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
-    try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: instruction }] },
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2 },
-        }),
-        signal: AbortSignal.timeout(90_000),
-      });
-      if (response.ok) {
-        const body = await response.json();
-        const text = body.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("");
-        if (text) return text;
-      }
-    } catch (error) {
-      console.warn("Gemini text completion failed; trying OpenAI fallback.", error);
-    }
+  const geminiBody = await callGemini("gemini-3.8-flash:generateContent", {
+    systemInstruction: { parts: [{ text: instruction }] },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.2 },
+  }, 90_000);
+
+  if (geminiBody) {
+    const candidates = geminiBody.candidates as Array<{ content?: { parts?: Array<{ text?: string }> } }> | undefined;
+    const text = candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("");
+    if (text) return text;
   }
 
   const response = await openAI().responses.create({

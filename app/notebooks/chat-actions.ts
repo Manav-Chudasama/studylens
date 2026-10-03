@@ -10,12 +10,74 @@ import { finalizeGroundedAnswer, type RetrievedPassage } from "@/lib/grounded-an
 import { notebookIdSchema } from "@/lib/notebook-schema";
 import type { StudyMessage } from "@/lib/study-types";
 
-const questionSchema = z.string().trim().min(3, "Ask a complete question.").max(2000, "Keep questions under 2,000 characters.");
+const questionSchema = z.string().trim().min(1, "Enter a question.").max(2000, "Keep questions under 2,000 characters.");
 
 type ChatTurn = { conversationId: string; title: string; userMessage: StudyMessage; assistantMessage: StudyMessage };
 type ChatResult = { ok: true; data: ChatTurn } | { ok: false; message: string };
 
 type SearchRow = RetrievedPassage & { similarity: number };
+
+async function saveAndReturnTurn(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  notebookId: string,
+  userId: string,
+  question: string,
+  assistantContent: string,
+  citations: StudyMessage["citations"],
+  activity: string,
+  conversationId?: string,
+  existingTitle?: string,
+): Promise<ChatResult> {
+  const title = existingTitle ?? question.slice(0, 120);
+  let savedConversationId = conversationId;
+  let isNewConversation = false;
+  if (!savedConversationId) {
+    const { data, error } = await supabase.from("conversations").insert({ notebook_id: notebookId, owner_id: userId, title })
+      .select("id").single();
+    if (error || !data) return { ok: false, message: "Could not save the conversation." };
+    savedConversationId = data.id;
+    isNewConversation = true;
+  }
+  const now = Date.now();
+  const userMessage: StudyMessage = { id: crypto.randomUUID(), role: "user", content: question, citations: [] };
+  const assistantMessage: StudyMessage = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: assistantContent,
+    citations,
+    activity,
+  };
+  const { error: saveError } = await supabase.from("chat_messages").insert([
+    {
+      id: userMessage.id,
+      conversation_id: savedConversationId,
+      notebook_id: notebookId,
+      owner_id: userId,
+      role: "user",
+      content: question,
+      citations: [],
+      created_at: new Date(now).toISOString(),
+    },
+    {
+      id: assistantMessage.id,
+      conversation_id: savedConversationId,
+      notebook_id: notebookId,
+      owner_id: userId,
+      role: "assistant",
+      content: assistantContent,
+      citations,
+      created_at: new Date(now + 1).toISOString(),
+    },
+  ]);
+  if (saveError) {
+    if (isNewConversation) await supabase.from("conversations").delete().eq("id", savedConversationId).eq("owner_id", userId);
+    return { ok: false, message: "Could not save the answer." };
+  }
+  await supabase.from("conversations").update({ updated_at: new Date().toISOString() })
+    .eq("id", savedConversationId).eq("notebook_id", notebookId).eq("owner_id", userId);
+  revalidatePath(`/notebooks/${notebookId}`);
+  return { ok: true, data: { conversationId: savedConversationId, title, userMessage, assistantMessage } };
+}
 
 /** Load one owned conversation when selected from history. */
 export async function loadConversation(notebookId: string, conversationId: string): Promise<{ ok: true; messages: StudyMessage[] } | { ok: false; message: string }> {
@@ -52,10 +114,29 @@ export async function sendNotebookQuestion(notebookId: string, questionInput: un
     if (!conversation) return { ok: false, message: "Conversation not found." };
     existingTitle = conversation.title;
   }
-  const { count, error: countError } = await supabase.from("materials").select("id", { count: "exact", head: true })
-    .eq("notebook_id", notebookId).eq("owner_id", userId).eq("index_status", "ready").eq("status", "ready");
+
+  // Handle conversational greetings smoothly without throwing an error
+  const isGreeting = /^(hi|hello|hey|greetings|howdy|good\s+(morning|afternoon|evening))\b/i.test(question);
+  if (isGreeting) {
+    const greetingText = "Hello! I'm StudyLens, your AI study assistant. Ask me questions about your uploaded materials, or ask me to summarize key points, generate a study guide, or quiz you!";
+    return await saveAndReturnTurn(supabase, notebookId, userId, question, greetingText, [], "StudyLens Assistant", conversationId, existingTitle);
+  }
+
+  const { data: allMaterials, error: countError } = await supabase.from("materials")
+    .select("id,title,status,index_status")
+    .eq("notebook_id", notebookId).eq("owner_id", userId);
   if (countError) return { ok: false, message: "Could not inspect notebook sources." };
-  if (!count) return { ok: false, message: "Index a material in this notebook before asking questions." };
+
+  const readyMaterials = (allMaterials ?? []).filter((m) => m.index_status === "ready" && m.status === "ready");
+  if (readyMaterials.length === 0) {
+    if (!allMaterials || allMaterials.length === 0) {
+      const emptyText = "Your notebook library is empty right now. Upload your notes, PDFs, or Markdown files using the **+ Upload material** button on the left, and I'll index them so you can ask source-grounded questions!";
+      return await saveAndReturnTurn(supabase, notebookId, userId, question, emptyText, [], "Library Notice", conversationId, existingTitle);
+    }
+    const materialNames = allMaterials.map((m) => m.title).join(", ");
+    const indexingText = `I found materials in this notebook (${materialNames}), but they are not indexed yet. Please check the Library on the left and click **Retry indexing** so I can search and cite them for you!`;
+    return await saveAndReturnTurn(supabase, notebookId, userId, question, indexingText, [], "Indexing Notice", conversationId, existingTitle);
+  }
 
   let chunks: SearchRow[];
   try {
@@ -69,7 +150,11 @@ export async function sendNotebookQuestion(notebookId: string, questionInput: un
     console.error("Notebook search failed", { notebookId, cause });
     return { ok: false, message: "Could not search your materials. Check the AI configuration and try again." };
   }
-  if (chunks.length === 0) return { ok: false, message: "No searchable passages were found in this notebook." };
+
+  if (chunks.length === 0) {
+    const noPassageText = `I searched your indexed materials, but couldn't find any relevant passages for "${question}". Try rephrasing your question or checking if the topic is covered in your uploaded files.`;
+    return await saveAndReturnTurn(supabase, notebookId, userId, question, noPassageText, [], `Searched ${readyMaterials.length} material(s)`, conversationId, existingTitle);
+  }
 
   let history = "";
   if (conversationId) {
@@ -92,33 +177,15 @@ export async function sendNotebookQuestion(notebookId: string, questionInput: un
     return { ok: false, message: "Could not generate an answer. Check the AI configuration and try again." };
   }
 
-  const title = existingTitle ?? question.slice(0, 120);
-  let savedConversationId = conversationId;
-  let isNewConversation = false;
-  if (!savedConversationId) {
-    const { data, error } = await supabase.from("conversations").insert({ notebook_id: notebookId, owner_id: userId, title })
-      .select("id").single();
-    if (error || !data) return { ok: false, message: "Could not save the conversation." };
-    savedConversationId = data.id;
-    isNewConversation = true;
-  }
-  if (!savedConversationId) return { ok: false, message: "Could not save the conversation." };
-  const now = Date.now();
-  const userMessage: StudyMessage = { id: crypto.randomUUID(), role: "user", content: question, citations: [] };
-  const assistantMessage: StudyMessage = { id: crypto.randomUUID(), role: "assistant", content: answerResult.content, citations: answerResult.citations,
-    activity: `Searched ${chunks.length} passage${chunks.length === 1 ? "" : "s"}` };
-  const { error: saveError } = await supabase.from("chat_messages").insert([
-    { id: userMessage.id, conversation_id: savedConversationId, notebook_id: notebookId, owner_id: userId,
-      role: "user", content: question, citations: [], created_at: new Date(now).toISOString() },
-    { id: assistantMessage.id, conversation_id: savedConversationId, notebook_id: notebookId, owner_id: userId,
-      role: "assistant", content: answerResult.content, citations: answerResult.citations, created_at: new Date(now + 1).toISOString() },
-  ]);
-  if (saveError) {
-    if (isNewConversation) await supabase.from("conversations").delete().eq("id", savedConversationId).eq("owner_id", userId);
-    return { ok: false, message: "Could not save the answer." };
-  }
-  await supabase.from("conversations").update({ updated_at: new Date().toISOString() })
-    .eq("id", savedConversationId).eq("notebook_id", notebookId).eq("owner_id", userId);
-  revalidatePath(`/notebooks/${notebookId}`);
-  return { ok: true, data: { conversationId: savedConversationId, title, userMessage, assistantMessage } };
+  return await saveAndReturnTurn(
+    supabase,
+    notebookId,
+    userId,
+    question,
+    answerResult.content,
+    answerResult.citations,
+    `Searched ${chunks.length} passage${chunks.length === 1 ? "" : "s"}`,
+    conversationId,
+    existingTitle,
+  );
 }

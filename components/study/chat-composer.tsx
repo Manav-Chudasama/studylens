@@ -35,13 +35,15 @@ export function ChatComposer({ isBusy = false, onSend, allowAttachments = true }
 
   async function submit(value: string) {
     if (!onSend || !value.trim() || isBusy) return;
+    const textToSend = value.trim();
+    const files = attachments.flatMap((attachment) => attachment.data instanceof File ? [attachment.data] : []);
     setError("");
+    setDraft("");
+    setAttachments([]);
     try {
-      const files = attachments.flatMap((attachment) => attachment.data instanceof File ? [attachment.data] : []);
-      await onSend({ text: value.trim(), files });
-      setDraft("");
-      setAttachments([]);
+      await onSend({ text: textToSend, files });
     } catch (cause) {
+      setDraft(textToSend);
       setError(cause instanceof Error ? cause.message : "Your question could not be sent. Try again.");
     }
   }

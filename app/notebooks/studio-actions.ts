@@ -1,6 +1,5 @@
 "use server";
 
-import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { notebookIdSchema } from "@/lib/notebook-schema";
 import type { RetrievedPassage } from "@/lib/grounded-answer";

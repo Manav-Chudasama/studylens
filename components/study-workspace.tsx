@@ -136,14 +136,49 @@ export function StudyWorkspace({
     setIsHistoryOpen(false);
   }
 
+  async function handleRetry() {
+    const lastUserMessage = [...chatMessages].reverse().find((m) => m.role === "user");
+    if (!lastUserMessage) {
+      setActiveChatState("idle");
+      return;
+    }
+    setActiveChatState("searching");
+    try {
+      if (onSend) {
+        const turn = await onSend({ text: lastUserMessage.content, files: [] }, selectedConversationId);
+        setSelectedConversationId(turn.conversationId);
+        setChatMessages((previous) => [
+          ...previous.filter((m) => m.id !== lastUserMessage.id),
+          turn.userMessage,
+          turn.assistantMessage,
+        ]);
+        setActiveChatState("idle");
+      }
+    } catch {
+      setActiveChatState("error");
+    }
+  }
+
   async function handleSend(submission: ChatSubmission) {
+    const optimisticUserMessage: StudyMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: submission.text,
+      citations: [],
+    };
+    setChatMessages((previous) => [...previous, optimisticUserMessage]);
+    setActiveChatState("searching");
+
     if (onSend) {
       if (submission.files.length) throw new Error("Upload files through the Library before asking about them.");
-      setActiveChatState("searching");
       try {
         const turn = await onSend(submission, selectedConversationId);
         setSelectedConversationId(turn.conversationId);
-        setChatMessages((previous) => [...previous, turn.userMessage, turn.assistantMessage]);
+        setChatMessages((previous) => [
+          ...previous.filter((m) => m.id !== optimisticUserMessage.id),
+          turn.userMessage,
+          turn.assistantMessage,
+        ]);
         setActiveChatState("idle");
       } catch (cause) {
         setActiveChatState("error");
@@ -152,15 +187,6 @@ export function StudyWorkspace({
       return;
     }
 
-    const userMessage: StudyMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: submission.text,
-      citations: [],
-    };
-
-    setChatMessages((prev) => [...prev, userMessage]);
-    setActiveChatState("searching");
 
     setTimeout(() => {
       setActiveChatState("streaming");
@@ -506,7 +532,7 @@ export function StudyWorkspace({
                 messages={chatMessages}
                 onOpenCitation={openCitation}
                 onRegenerate={enableDemoChat ? handleRegenerate : undefined}
-                onRetry={onRetry ?? (() => setActiveChatState("idle"))}
+                onRetry={onRetry ?? handleRetry}
                 quiz={showQuiz ? quiz ?? undefined : undefined}
                 state={activeChatState}
               />
@@ -539,7 +565,7 @@ export function StudyWorkspace({
             messages={chatMessages}
             onOpenCitation={openCitation}
             onRegenerate={enableDemoChat ? handleRegenerate : undefined}
-            onRetry={onRetry ?? (() => setActiveChatState("idle"))}
+            onRetry={onRetry ?? handleRetry}
             quiz={showQuiz ? quiz ?? undefined : undefined}
             state={activeChatState}
           />
