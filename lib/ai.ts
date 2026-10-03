@@ -32,12 +32,12 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   // Fallback to Gemini embeddings
   const geminiKey = process.env.GEMINI_API_KEY;
   if (geminiKey) {
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
       body: JSON.stringify({
         requests: texts.map((text) => ({
-          model: "models/text-embedding-004",
+          model: "models/gemini-embedding-001",
           content: { parts: [{ text }] },
           outputDimensionality: 1536,
         })),

@@ -34,7 +34,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (lockError || !locked) return Response.json({ message: "Could not start indexing." }, { status: 409 });
 
   try {
-    if (!process.env.OPENAI_API_KEY) throw new IndexingError("Set OPENAI_API_KEY on the server to enable indexing.");
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
+      throw new IndexingError("Set GEMINI_API_KEY or OPENAI_API_KEY on the server to enable indexing.");
+    }
     let file: Blob | undefined;
     if (material.storage_path) {
       const { data, error } = await supabase.storage.from("study-materials").download(material.storage_path);
