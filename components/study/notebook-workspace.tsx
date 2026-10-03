@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createNoteMaterial, completeFileMaterial, deleteMaterial, failFileMaterial, reserveFileMaterial } from "@/app/notebooks/material-actions";
+import { createNoteMaterial, createVideoMaterial, completeFileMaterial, deleteMaterial, failFileMaterial, reserveFileMaterial } from "@/app/notebooks/material-actions";
 import { loadConversation, sendNotebookQuestion } from "@/app/notebooks/chat-actions";
 import { StudyWorkspace } from "@/components/study-workspace";
 import type { ChatSubmission } from "@/components/study/chat-composer";
@@ -37,7 +37,14 @@ export function NotebookWorkspace({ notebook, viewer, initialMaterials, initialC
   }
 
   async function handleUpload(request: MaterialUploadRequest) {
-    if (request.kind === "video") throw new Error("YouTube transcripts are not available yet.");
+    if (request.kind === "video") {
+      const result = await createVideoMaterial(notebook.id, request.url);
+      if (!result.ok) throw new Error(result.message);
+      setMaterials((items) => [result.data, ...items]);
+      router.refresh();
+      void indexMaterials([result.data.id]);
+      return;
+    }
     if (request.kind === "note") {
       const result = await createNoteMaterial(notebook.id, { title: request.title, content: request.content });
       if (!result.ok) throw new Error(result.message);

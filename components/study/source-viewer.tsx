@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { FileText, PanelRightClose, PlayCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -34,7 +34,7 @@ export function SourceViewer({
   const isPdf = material?.sourceKind === "pdf";
 
   useEffect(() => {
-    if (!storagePath || material?.status !== "ready") return;
+    if (!storagePath || material?.status !== "ready" || material?.type === "video") return;
     let isCancelled = false;
     let createdUrl: string | undefined;
     const load = async () => {
@@ -87,6 +87,9 @@ export function SourceViewer({
           {citation && <Badge className="mt-3 max-w-full" variant="outline">{formatLocation(citation.location)}</Badge>}
         </div>
       )}
+      {material?.type === "video" ? (
+        <YoutubeSourceViewer material={material} citation={citation} />
+      ) : (
       <ScrollArea className="min-h-0 flex-1 bg-muted/40 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
         <div className="p-4 sm:p-5">
         {!material && (
@@ -102,11 +105,7 @@ export function SourceViewer({
           )}
           {material?.status === "ready" && preview && (
             <div className="mx-auto max-w-lg border border-border bg-card px-6 py-8 shadow-sm sm:px-9 sm:py-10">
-              {material.type === "video" ? (
-                <VideoSource citation={citation} preview={preview} />
-              ) : (
-                <TextSource citation={citation} material={material} preview={preview} />
-              )}
+              <TextSource citation={citation} material={material} preview={preview} />
             </div>
           )}
         {material?.status === "ready" && !preview && material.sourceKind === "note" && (
@@ -135,6 +134,7 @@ export function SourceViewer({
           )}
         </div>
       </ScrollArea>
+      )}
     </div>
   );
 }
@@ -167,24 +167,7 @@ function TextSource({
   );
 }
 
-function VideoSource({ citation, preview }: { citation?: Citation; preview: SourcePreview }) {
-  return (
-    <article className="space-y-5 text-sm leading-7">
-      <div className="flex aspect-video items-center justify-center rounded-lg bg-muted" role="img" aria-label="Video player placeholder">
-        <PlayCircle className="size-12 text-muted-foreground" />
-      </div>
-      <div>
-        <p className="mb-2 text-xs text-muted-foreground">{citation ? formatLocation(citation.location) : preview.intro}</p>
-        <h3 className="text-2xl font-semibold tracking-tight">{preview.heading}</h3>
-      </div>
-      <div className="rounded-md bg-muted px-3 py-3 ring-1 ring-border">
-        <span className="mb-2 block text-xs font-medium text-muted-foreground">Transcript excerpt</span>
-        <p>{preview.excerpt}</p>
-      </div>
-      <p>{preview.following}</p>
-    </article>
-  );
-}
+
 
 export function formatLocation(location: SourceLocation): string {
   if (location.kind === "page") return `Page ${location.page}`;
@@ -192,4 +175,126 @@ export function formatLocation(location: SourceLocation): string {
   const minutes = Math.floor(location.seconds / 60);
   const seconds = String(location.seconds % 60).padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+type TranscriptItem = {
+  start_ms?: number;
+  start_time_text?: string;
+  start?: number;
+  snippet?: string;
+  text?: string;
+};
+
+type TranscriptData = {
+  title: string;
+  transcript: TranscriptItem[];
+};
+
+function YoutubeSourceViewer({ material, citation }: { material: Material, citation?: Citation }) {
+  const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  
+  const handleSeek = (item: TranscriptItem) => {
+    let seconds = 0;
+    if (item.start_ms !== undefined) {
+      seconds = Math.floor(item.start_ms / 1000);
+    } else if (item.start_time_text) {
+      const parts = item.start_time_text.split(':').map(Number);
+      if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+      else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
+    } else if (typeof item.start === 'number') {
+      seconds = item.start;
+    }
+    
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'seekTo',
+        args: [seconds, true]
+      }), '*');
+      iframeRef.current.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'playVideo',
+        args: []
+      }), '*');
+    }
+  };
+
+  const videoId = useMemo(() => {
+    try {
+       if (material.storagePath && material.storagePath.includes('v=')) {
+         return new URL(material.storagePath).searchParams.get('v');
+       }
+       if (material.storagePath && material.storagePath.includes('youtu.be/')) {
+         return material.storagePath.split('youtu.be/')[1].split('?')[0];
+       }
+    } catch {
+       // Ignore URL parse errors
+    }
+    return 'Gk8gB5VACZw';
+  }, [material.storagePath]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchTranscript = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/transcript?v=${videoId}`);
+        const data = await res.json();
+        if (active) {
+          if (res.ok) setTranscriptData(data as TranscriptData);
+          else setError(data.error || 'Failed to fetch transcript');
+        }
+      } catch {
+         if (active) setError('Failed to fetch transcript');
+      } finally {
+         if (active) setLoading(false);
+      }
+    };
+    fetchTranscript();
+    return () => { active = false; };
+  }, [videoId]);
+
+  return (
+    <div className="flex flex-col flex-1 h-full min-h-0 min-w-0">
+      <div className="flex-1 min-h-0 border-b border-border bg-black">
+        <iframe
+          ref={iframeRef}
+          width="100%"
+          height="100%"
+          src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=0`}
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        ></iframe>
+      </div>
+      <ScrollArea className="flex-1 min-h-0 bg-muted/40 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <div className="p-4 sm:p-5">
+          {loading && <p className="text-sm text-muted-foreground">Loading transcript...</p>}
+          {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+          {transcriptData && transcriptData.transcript && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-lg">{transcriptData.title}</h3>
+              {citation && (
+                 <div className="mb-4 rounded-md border border-border bg-card p-3 text-sm leading-6">
+                   <p className="mb-1 text-xs font-medium text-muted-foreground">Cited passage</p>
+                   <p>{citation.excerpt}</p>
+                 </div>
+              )}
+              <div className="text-sm leading-7 space-y-2">
+                {transcriptData.transcript.map((item: TranscriptItem, i: number) => (
+                  <p key={i} className="flex gap-4 hover:bg-muted p-1 -mx-1 rounded cursor-pointer transition-colors" onClick={() => handleSeek(item)}>
+                    <span className="text-muted-foreground shrink-0 w-12 text-right">{item.start_time_text || item.start || '0:00'}</span>
+                    <span>{item.snippet || item.text}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
 }
