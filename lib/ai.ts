@@ -14,12 +14,46 @@ function openAI() {
 /** Embed a bounded batch using the same 1536-dimensional model for sources and queries. */
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   if (texts.length === 0 || texts.length > 32) throw new Error("Embedding batch must contain 1–32 passages.");
-  const result = await openAI().embeddings.create({ model: "text-embedding-3-small", input: texts, encoding_format: "float" });
-  const vectors = result.data.sort((left, right) => left.index - right.index).map((item) => item.embedding);
-  if (vectors.length !== texts.length || vectors.some((vector) => vector.length !== 1536)) {
-    throw new Error("Embedding provider returned an unexpected vector size.");
+
+  // Try OpenAI embeddings first if key is configured
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (openAiKey) {
+    try {
+      const result = await openAI().embeddings.create({ model: "text-embedding-3-small", input: texts, encoding_format: "float" });
+      const vectors = result.data.sort((left, right) => left.index - right.index).map((item) => item.embedding);
+      if (vectors.length === texts.length && vectors.every((vector) => vector.length === 1536)) {
+        return vectors;
+      }
+    } catch (error) {
+      console.warn("OpenAI embedding failed; attempting Gemini fallback.", error);
+    }
   }
-  return vectors;
+
+  // Fallback to Gemini embeddings
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+      body: JSON.stringify({
+        requests: texts.map((text) => ({
+          model: "models/gemini-embedding-001",
+          content: { parts: [{ text }] },
+          outputDimensionality: 1536,
+        })),
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (response.ok) {
+      const body = await response.json();
+      if (Array.isArray(body.embeddings) && body.embeddings.length === texts.length) {
+        return body.embeddings.map((item: { values: number[] }) => item.values);
+      }
+    }
+  }
+
+  throw new Error("Either OPENAI_API_KEY or GEMINI_API_KEY is required for embedding generation.");
 }
 
 const answerJsonSchema = {
@@ -47,7 +81,7 @@ export async function generateGroundedAnswer(prompt: string): Promise<GroundedAn
   const geminiKey = process.env.GEMINI_API_KEY;
   if (geminiKey) {
     try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
         body: JSON.stringify({
@@ -74,4 +108,78 @@ export async function generateGroundedAnswer(prompt: string): Promise<GroundedAn
     max_output_tokens: 1200,
   });
   return groundedAnswerSchema.parse(JSON.parse(response.output_text));
+}
+
+/** Generate structured JSON from a custom system instruction and schema with Gemini & OpenAI fallback */
+export async function generateStructuredCompletion<T>(
+  instruction: string,
+  prompt: string,
+  schema: Record<string, unknown>,
+  schemaParser: z.ZodType<T>,
+): Promise<T> {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    try {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: instruction }] },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0.2 },
+        }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (response.ok) {
+        const body = await response.json();
+        const text = body.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("");
+        return schemaParser.parse(JSON.parse(text));
+      }
+    } catch (error) {
+      console.warn("Gemini structured completion failed; trying OpenAI fallback.", error);
+    }
+  }
+
+  const response = await openAI().responses.create({
+    model: "gpt-4.1-mini",
+    instructions: instruction,
+    input: prompt,
+    text: { format: { type: "json_schema", name: "structured_output", strict: true, schema } },
+    max_output_tokens: 2500,
+  });
+  return schemaParser.parse(JSON.parse(response.output_text));
+}
+
+/** Generate freeform markdown text from source context using Gemini & OpenAI fallback */
+export async function generateTextCompletion(instruction: string, prompt: string): Promise<string> {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    try {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: instruction }] },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2 },
+        }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (response.ok) {
+        const body = await response.json();
+        const text = body.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("");
+        if (text) return text;
+      }
+    } catch (error) {
+      console.warn("Gemini text completion failed; trying OpenAI fallback.", error);
+    }
+  }
+
+  const response = await openAI().responses.create({
+    model: "gpt-4.1-mini",
+    instructions: instruction,
+    input: prompt,
+    max_output_tokens: 2500,
+  });
+  return response.output_text;
 }

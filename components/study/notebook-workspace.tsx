@@ -106,6 +106,7 @@ export function NotebookWorkspace({ notebook, viewer, initialMaterials, initialC
   return (
     <StudyWorkspace
       key={notebook.id}
+      notebookId={notebook.id}
       notebookTitle={notebook.title}
       viewer={viewer}
       materials={materials}

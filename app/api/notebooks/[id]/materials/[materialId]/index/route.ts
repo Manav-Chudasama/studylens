@@ -34,7 +34,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (lockError || !locked) return Response.json({ message: "Could not start indexing." }, { status: 409 });
 
   try {
-    if (!process.env.OPENAI_API_KEY) throw new IndexingError("Set OPENAI_API_KEY on the server to enable indexing.");
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
+      throw new IndexingError("Set GEMINI_API_KEY or OPENAI_API_KEY on the server to enable indexing.");
+    }
     let file: Blob | undefined;
     if (material.storage_path) {
       const { data, error } = await supabase.storage.from("study-materials").download(material.storage_path);
@@ -71,11 +73,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     revalidatePath(`/notebooks/${notebookId}`);
     return Response.json({ material: toMaterial(ready as MaterialRow), chunkCount: chunks.length });
   } catch (cause) {
-    const message = cause instanceof IndexingError ? cause.message : "Indexing failed. Retry this material.";
-    console.error("Material indexing failed", { materialId, cause });
+    const message = cause instanceof Error ? cause.message : "Indexing failed. Retry this material.";
+    console.error("Material indexing failed:", cause);
     await supabase.from("materials").update({ index_status: "failed", index_error: message })
       .eq("id", materialId).eq("notebook_id", notebookId).eq("owner_id", userId);
     revalidatePath(`/notebooks/${notebookId}`);
-    return Response.json({ message }, { status: cause instanceof IndexingError ? 422 : 500 });
+    return Response.json({ message }, { status: 500 });
   }
 }
